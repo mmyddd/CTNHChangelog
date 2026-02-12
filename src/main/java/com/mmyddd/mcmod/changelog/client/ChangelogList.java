@@ -114,7 +114,6 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
                     int tagWidth = font.width(tag) + 6;
                     int tagHeight = 10;
 
-                    // 使用ChangelogEntry.getTagColor()获取标签颜色
                     int tagBgColor = ChangelogEntry.getTagColor(tag);
                     graphics.fill(currentX, line1Y - 1, currentX + tagWidth, line1Y + tagHeight, tagBgColor);
                     graphics.drawString(font, tag, currentX + 3, line1Y, 0xFFFFFFFF);

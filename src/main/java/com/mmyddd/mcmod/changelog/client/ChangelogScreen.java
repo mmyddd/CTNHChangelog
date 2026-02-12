@@ -14,7 +14,6 @@ public class ChangelogScreen extends Screen {
     private final ChangelogEntry entry;
     private final CreateWorldScreen parentScreen;
 
-    // 滚动相关
     private double scrollAmount;
     private int contentHeight;
     private int listTop;

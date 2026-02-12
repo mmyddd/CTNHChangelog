@@ -98,7 +98,25 @@ public class ChangelogEntry {
 
     public static void loadAsync() {
         CompletableFuture.runAsync(() -> {
+            int attempts = 0;
+            while (Config.getChangelogUrl() == null || Config.getChangelogUrl().isEmpty()) {
+                try {
+                    if (attempts++ > 50) {
+                        CTNHChangelog.LOGGER.warn("Timeout waiting for config, using local resources");
+                        loadFromResources();
+                        isLoaded = true;
+                        return;
+                    }
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+
             String remoteUrl = Config.getChangelogUrl();
+            CTNHChangelog.LOGGER.info("Attempting to load changelog from remote URL: {}", remoteUrl);
+
             if (remoteUrl != null && !remoteUrl.isEmpty()) {
                 if (loadFromRemote(remoteUrl)) {
                     CTNHChangelog.LOGGER.info("Loaded {} changelog entries from remote", ALL_ENTRIES.size());
@@ -114,6 +132,8 @@ public class ChangelogEntry {
     }
 
     private static boolean loadFromRemote(String urlStr) {
+        CTNHChangelog.LOGGER.info("Attempting to load changelog from remote URL: {}", urlStr);
+
         HttpURLConnection connection = null;
         try {
             URL url = new URL(urlStr);
@@ -124,16 +144,25 @@ public class ChangelogEntry {
             connection.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
 
             int responseCode = connection.getResponseCode();
+            CTNHChangelog.LOGGER.info("Remote server response code: {}", responseCode);
+
             if (responseCode != 200) {
                 CTNHChangelog.LOGGER.warn("Remote JSON returned status code: {}", responseCode);
                 return false;
             }
 
             try (InputStream is = connection.getInputStream()) {
-                return loadFromStream(is);
+                boolean success = loadFromStream(is);
+                if (success) {
+                    CTNHChangelog.LOGGER.info("Successfully loaded changelog from remote");
+                } else {
+                    CTNHChangelog.LOGGER.warn("Failed to parse remote changelog");
+                }
+                return success;
             }
         } catch (Exception e) {
-            CTNHChangelog.LOGGER.warn("Failed to load changelog from remote: {}", e.getMessage());
+            CTNHChangelog.LOGGER.error("Failed to load changelog from remote: {}", e.getMessage());
+            e.printStackTrace();
             return false;
         } finally {
             if (connection != null) {
@@ -215,7 +244,6 @@ public class ChangelogEntry {
                     types.add("patch");
                 }
 
-                // 保留color字段解析
                 String colorStr = obj.has("color") ? obj.get("color").getAsString() : "#FFFFFF";
                 int color = parseColor(colorStr);
 

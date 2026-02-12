@@ -25,7 +25,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import java.lang.reflect.Field;
 import java.util.Collections;
 
 @Mixin(CreateWorldScreen.class)
@@ -41,16 +40,24 @@ public abstract class CreateWorldScreenMixin extends Screen {
     private static final Component CREATE_WORLD_TEXT = Component.translatable("selectWorld.create");
 
     @Unique
-    private Component originalCreateButtonText = null;
+    private Button originalCreateButton = null;
 
     @Unique
-    private Button.OnPress originalCreateButtonCallback = null;
-
-    @Unique
-    private Button currentActionButton = null;
+    private Button viewDetailsButton = null;
 
     @Unique
     private boolean isUpdatingButton = false;
+
+    @Unique
+    private int originalButtonX;
+    @Unique
+    private int originalButtonY;
+    @Unique
+    private int originalButtonWidth;
+    @Unique
+    private int originalButtonHeight;
+    @Unique
+    private Component originalButtonMessage;
 
     protected CreateWorldScreenMixin(Component title) {
         super(title);
@@ -79,7 +86,18 @@ public abstract class CreateWorldScreenMixin extends Screen {
     private void onInit(CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        resetButtonState();
+        this.originalCreateButton = findCreateWorldButton();
+
+        if (this.originalCreateButton != null) {
+            this.originalButtonX = this.originalCreateButton.getX();
+            this.originalButtonY = this.originalCreateButton.getY();
+            this.originalButtonWidth = this.originalCreateButton.getWidth();
+            this.originalButtonHeight = this.originalCreateButton.getHeight();
+            this.originalButtonMessage = this.originalCreateButton.getMessage();
+        }
+
+        createViewDetailsButton();
+
         updateButtonForCurrentTab();
 
         if (ChangelogTab.shouldOpenChangelogTab) {
@@ -93,32 +111,70 @@ public abstract class CreateWorldScreenMixin extends Screen {
         }
     }
 
+    @Unique
+    private void createViewDetailsButton() {
+        this.viewDetailsButton = Button.builder(
+                        VIEW_DETAILS_TEXT,
+                        button -> {
+                            Tab currentTab = tabManager.getCurrentTab();
+                            if (currentTab instanceof ChangelogTab changelogTab) {
+                                ChangelogList list = changelogTab.getChangelogList();
+                                ChangelogList.Entry selected = list != null ? list.getSelected() : null;
+                                if (selected != null) {
+                                    Minecraft.getInstance().setScreen(
+                                            new ChangelogScreen(
+                                                    selected.getEntry(),
+                                                    (CreateWorldScreen) (Object) CreateWorldScreenMixin.this
+                                            )
+                                    );
+                                }
+                            }
+                        })
+                .bounds(originalButtonX, originalButtonY, originalButtonWidth, originalButtonHeight)
+                .build();
+
+        this.viewDetailsButton.visible = false;
+
+        addRenderableWidget(this.viewDetailsButton);
+    }
+
     @Inject(method = "repositionElements", at = @At("TAIL"))
     private void onRepositionElements(CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        updateButtonPosition();
-    }
+        Button currentCreateButton = findCreateWorldButton();
 
-    @Unique
-    private void resetButtonState() {
-        originalCreateButtonText = null;
-        originalCreateButtonCallback = null;
-        currentActionButton = null;
+        if (currentCreateButton != null) {
+            this.originalCreateButton = currentCreateButton;
+
+            this.originalButtonX = currentCreateButton.getX();
+            this.originalButtonY = currentCreateButton.getY();
+            this.originalButtonWidth = currentCreateButton.getWidth();
+            this.originalButtonHeight = currentCreateButton.getHeight();
+            this.originalButtonMessage = currentCreateButton.getMessage();
+
+            if (this.viewDetailsButton != null) {
+                this.viewDetailsButton.setX(this.originalButtonX);
+                this.viewDetailsButton.setY(this.originalButtonY);
+                this.viewDetailsButton.setWidth(this.originalButtonWidth);
+                this.viewDetailsButton.setHeight(this.originalButtonHeight);
+            }
+        }
+
+        updateButtonPosition();
     }
 
     @Unique
     private void updateButtonPosition() {
         if (isUpdatingButton) return;
 
-        Button currentButton = findCreateWorldButton();
-        if (currentButton != null && currentActionButton != null) {
-            Tab currentTab = tabManager.getCurrentTab();
-            if (currentTab instanceof ChangelogTab) {
-                if (currentActionButton.getMessage().getString().equals(VIEW_DETAILS_TEXT.getString())) {
-                    currentActionButton.setX(currentButton.getX());
-                    currentActionButton.setY(currentButton.getY());
-                }
+        Tab currentTab = tabManager.getCurrentTab();
+        if (currentTab instanceof ChangelogTab) {
+            if (viewDetailsButton != null && originalCreateButton != null) {
+                viewDetailsButton.setX(originalCreateButton.getX());
+                viewDetailsButton.setY(originalCreateButton.getY());
+                viewDetailsButton.setWidth(originalCreateButton.getWidth());
+                viewDetailsButton.setHeight(originalCreateButton.getHeight());
             }
         }
     }
@@ -131,14 +187,26 @@ public abstract class CreateWorldScreenMixin extends Screen {
             isUpdatingButton = true;
 
             Tab currentTab = tabManager.getCurrentTab();
-            Button currentButton = findCreateWorldButton();
 
-            if (currentButton != null) {
-                if (currentTab instanceof ChangelogTab) {
-                    switchToViewDetailsButton(currentButton);
-                } else {
-                    switchToCreateWorldButton(currentButton);
+            if (originalCreateButton == null) {
+                originalCreateButton = findCreateWorldButton();
+                if (originalCreateButton != null) {
+                    originalButtonX = originalCreateButton.getX();
+                    originalButtonY = originalCreateButton.getY();
+                    originalButtonWidth = originalCreateButton.getWidth();
+                    originalButtonHeight = originalCreateButton.getHeight();
+                    originalButtonMessage = originalCreateButton.getMessage();
                 }
+            }
+
+            if (viewDetailsButton == null) {
+                createViewDetailsButton();
+            }
+
+            if (currentTab instanceof ChangelogTab) {
+                switchToViewDetailsButton();
+            } else {
+                switchToCreateWorldButton();
             }
         } finally {
             isUpdatingButton = false;
@@ -146,63 +214,31 @@ public abstract class CreateWorldScreenMixin extends Screen {
     }
 
     @Unique
-    private void switchToViewDetailsButton(Button currentButton) {
-        if (originalCreateButtonText == null) {
-            originalCreateButtonText = currentButton.getMessage();
-        }
-        if (originalCreateButtonCallback == null) {
-            try {
-                Field pressField = Button.class.getDeclaredField("onPress");
-                pressField.setAccessible(true);
-                originalCreateButtonCallback = (Button.OnPress) pressField.get(currentButton);
-            } catch (Exception e) {
-                CTNHChangelog.LOGGER.error("Failed to access button onPress field", e);
-            }
-        }
+    private void switchToViewDetailsButton() {
+        if (originalCreateButton == null || viewDetailsButton == null) return;
 
-        if (!currentButton.getMessage().getString().equals(VIEW_DETAILS_TEXT.getString())) {
-            removeWidget(currentButton);
-
-            Button viewButton = Button.builder(VIEW_DETAILS_TEXT, button -> {
-                Tab currentTab = tabManager.getCurrentTab();
-                if (currentTab instanceof ChangelogTab changelogTab) {
-                    ChangelogList list = changelogTab.getChangelogList();
-                    ChangelogList.Entry selected = list != null ? list.getSelected() : null;
-                    if (selected != null) {
-                        Minecraft.getInstance().setScreen(
-                                new ChangelogScreen(
-                                        selected.getEntry(),
-                                        (CreateWorldScreen) (Object) CreateWorldScreenMixin.this
-                                )
-                        );
-                    }
-                }
-            }).bounds(currentButton.getX(), currentButton.getY(),
-                    currentButton.getWidth(), currentButton.getHeight()).build();
-
-            addRenderableWidget(viewButton);
-            currentActionButton = viewButton;
-        }
+        originalCreateButton.visible = false;
+        viewDetailsButton.visible = true;
+        viewDetailsButton.setX(originalButtonX);
+        viewDetailsButton.setY(originalButtonY);
+        viewDetailsButton.setWidth(originalButtonWidth);
+        viewDetailsButton.setHeight(originalButtonHeight);
     }
 
     @Unique
-    private void switchToCreateWorldButton(Button currentButton) {
-        if (originalCreateButtonText != null &&
-                originalCreateButtonCallback != null &&
-                currentActionButton == currentButton &&
-                currentButton.getMessage().getString().equals(VIEW_DETAILS_TEXT.getString())) {
+    private void switchToCreateWorldButton() {
+        if (originalCreateButton == null) return;
 
-            removeWidget(currentButton);
+        originalCreateButton.visible = true;
 
-            Button originalButton = Button.builder(
-                            originalCreateButtonText,
-                            originalCreateButtonCallback)
-                    .bounds(currentButton.getX(), currentButton.getY(),
-                            currentButton.getWidth(), currentButton.getHeight())
-                    .build();
+        originalCreateButton.setX(originalButtonX);
+        originalCreateButton.setY(originalButtonY);
+        originalCreateButton.setWidth(originalButtonWidth);
+        originalCreateButton.setHeight(originalButtonHeight);
+        originalCreateButton.setMessage(originalButtonMessage);
 
-            addRenderableWidget(originalButton);
-            currentActionButton = originalButton;
+        if (viewDetailsButton != null) {
+            viewDetailsButton.visible = false;
         }
     }
 
