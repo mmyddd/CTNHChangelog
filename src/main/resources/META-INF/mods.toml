@@ -1,31 +1,33 @@
-modLoader = "javafml"
-loaderVersion = "[47,)"
-license = "${mod_license}"
-issueTrackerURL = "https://github.com/CTNH-Team/CTNH-Modules/issues"
+modLoader="javafml"
+loaderVersion="[47,)"
+license="LGPLv3"
 
 [[mods]]
-modId = "${mod_id}"
-version = "${mod_version}"
-displayName = "${mod_name}"
-authors = "${mod_author}"
-description = '''${mod_description}'''
+modId="ctnhchangelog"
+version="${mod_version}"
+displayName="CTNH Changelog"
+logoFile="ctnhchangelog.png"
+credits="CTNH Team"
+authors="CTNH Team"
+description='''
+Changelog viewer for Create: New Horizon modpack.
+'''
+[[dependencies.ctnhchangelog]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.ctnhchangelog]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="CLIENT"
 
 [[mixins]]
-config = "${mod_id}.mixins.json"
+config="ctnhchangelog.mixins.json"
 
 [[accessTransformers]]
-file = "META-INF/accesstransformer.cfg"
-
-[[dependencies.ctnhchangelog]]
-modId = "forge"
-mandatory = true
-versionRange = "[47,)"
-ordering = "NONE"
-side = "BOTH"
-
-[[dependencies.ctnhchangelog]]
-modId = "minecraft"
-mandatory = true
-versionRange = "[1.20.1,1.21)"
-ordering = "NONE"
-side = "BOTH"
+file="META-INF/accesstransformer.cfg"
