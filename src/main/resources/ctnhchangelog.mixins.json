@@ -7,11 +7,7 @@
   "mixins": [
   ],
   "client": [
-    "CreateWorldScreenMixin",
-    "SelectWorldScreenMixin",
-    "TabButtonMixin",
-    "TabNavigationBarBuilderMixin",
-    "accessor.TabNavigationBarAccessor"
+    "SelectWorldScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

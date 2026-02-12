@@ -1,7 +1,7 @@
 {
   "ctnhchangelog.tab.title": "更新日志",
   "ctnhchangelog.button.changelog": "更新日志",
-  "ctnhchangelog.button.view_changelog": "查看详情",
+  "ctnhchangelog.button.view_changelog": "双击查看详情",
   "ctnhchangelog.type.major": "重大更新",
   "ctnhchangelog.type.minor": "功能更新",
   "ctnhchangelog.type.patch": "修复",
@@ -10,5 +10,6 @@
   "ctnhchangelog.date": "日期",
   "ctnhchangelog.version": "版本",
   "ctnhchangelog.changes": "更改内容",
-  "ctnhchangelog.more_changes": "还有 %s 项更改..."
+  "ctnhchangelog.more_changes": "还有 %s 项更改...",
+  "ctnhchangelog.stats": "共 %s 个版本"
 }
