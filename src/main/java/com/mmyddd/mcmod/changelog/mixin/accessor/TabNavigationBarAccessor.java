@@ -1,4 +1,4 @@
-package io.github.cpearl0.ctnhchangelog.mixin.accessor;
+package com.mmyddd.mcmod.changelog.mixin.accessor;
 
 import com.google.common.collect.ImmutableList;
 import net.minecraft.client.gui.components.tabs.Tab;

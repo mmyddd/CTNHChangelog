@@ -1,4 +1,4 @@
-package io.github.cpearl0.ctnhchangelog.client;
+package com.mmyddd.mcmod.changelog.client;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -75,7 +75,6 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
         public void render(GuiGraphics graphics, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovering, float partialTick) {
             Font font = ChangelogList.this.minecraft.font;
 
-            // 渲染选中状态
             if (ChangelogList.this.getSelected() == this) {
                 graphics.fill(left - 2, top - 2, left + width -2, top + height + 2, 0x80FFFFFF);
             } else if (hovering) {
@@ -90,11 +89,9 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
             int line2Y = top + 18;
             int line3Y = top + 32;
 
-            // Version and type
             String typeIcon = getTypeIcon(changelogEntry.getType());
             graphics.drawString(font, typeIcon + " " + changelogEntry.getVersion(), textLeft, line1Y, changelogEntry.getColor() | 0xFF000000);
 
-            // 渲染多个标签
             int tagStartX = textLeft + font.width(typeIcon + " " + changelogEntry.getVersion()) + 6;
             List<String> tags = changelogEntry.getTags();
 
@@ -114,19 +111,16 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
                 }
             }
 
-            // Date
             if (!changelogEntry.getDate().isEmpty()) {
                 String dateText = "日期: " + changelogEntry.getDate();
                 int dateWidth = font.width(dateText);
                 graphics.drawString(font, dateText, left + width - dateWidth - 10, line1Y, 0xFFAAAAAA);
             }
 
-            // Title
             if (!changelogEntry.getTitle().isEmpty()) {
                 graphics.drawString(font, changelogEntry.getTitle(), textLeft, line2Y, 0xFFDDDDDD);
             }
 
-            // Changes preview (first line)
             if (!changelogEntry.getChanges().isEmpty()) {
                 String preview = "• " + changelogEntry.getChanges().get(0);
                 if (preview.length() > 60) {

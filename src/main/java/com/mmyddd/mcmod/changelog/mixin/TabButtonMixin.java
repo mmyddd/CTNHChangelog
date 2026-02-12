@@ -1,6 +1,6 @@
-package io.github.cpearl0.ctnhchangelog.mixin;
+package com.mmyddd.mcmod.changelog.mixin;
 
-import io.github.cpearl0.ctnhchangelog.client.ChangelogTab;
+import com.mmyddd.mcmod.changelog.client.ChangelogTab;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.TabButton;

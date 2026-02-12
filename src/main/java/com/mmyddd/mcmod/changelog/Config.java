@@ -1,4 +1,4 @@
-package io.github.cpearl0.ctnhchangelog;
+package com.mmyddd.mcmod.changelog;
 
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;

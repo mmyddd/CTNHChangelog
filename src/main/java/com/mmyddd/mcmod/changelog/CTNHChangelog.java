@@ -1,9 +1,8 @@
-package io.github.cpearl0.ctnhchangelog;
+package com.mmyddd.mcmod.changelog;
 
 import com.mojang.logging.LogUtils;
-import io.github.cpearl0.ctnhchangelog.client.ChangelogEntry;
+import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
 import net.minecraftforge.api.distmarker.Dist;
-import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.ModLoadingContext;

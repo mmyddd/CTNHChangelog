@@ -1,12 +1,12 @@
 // CreateWorldScreenMixin.java
-package io.github.cpearl0.ctnhchangelog.mixin;
+package com.mmyddd.mcmod.changelog.mixin;
 
-import io.github.cpearl0.ctnhchangelog.CTNHChangelog;
-import io.github.cpearl0.ctnhchangelog.Config;
-import io.github.cpearl0.ctnhchangelog.client.ChangelogList;
-import io.github.cpearl0.ctnhchangelog.client.ChangelogScreen;
-import io.github.cpearl0.ctnhchangelog.client.ChangelogTab;
-import io.github.cpearl0.ctnhchangelog.mixin.accessor.TabNavigationBarAccessor;
+import com.mmyddd.mcmod.changelog.CTNHChangelog;
+import com.mmyddd.mcmod.changelog.Config;
+import com.mmyddd.mcmod.changelog.client.ChangelogList;
+import com.mmyddd.mcmod.changelog.client.ChangelogScreen;
+import com.mmyddd.mcmod.changelog.client.ChangelogTab;
+import com.mmyddd.mcmod.changelog.mixin.accessor.TabNavigationBarAccessor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -35,39 +35,39 @@ public abstract class CreateWorldScreenMixin extends Screen {
     private TabManager tabManager;
 
     @Unique
-    private static final Component VIEW_CHANGELOG_TEXT = Component.translatable("ctnhchangelog.button.view_changelog");
+    private static final Component VIEW_DETAILS_TEXT = Component.translatable("ctnhchangelog.button.view_changelog");
 
     @Unique
     private static final Component CREATE_WORLD_TEXT = Component.translatable("selectWorld.create");
 
     @Unique
-    private Component ctnhchangelog$originalCreateButtonText = null;
+    private Component originalCreateButtonText = null;
 
     @Unique
-    private Button.OnPress ctnhchangelog$originalPressCommand = null;
+    private Button.OnPress originalCreateButtonCallback = null;
 
     @Unique
-    private Button ctnhchangelog$currentButton = null;
+    private Button currentActionButton = null;
 
     @Unique
-    private boolean ctnhchangelog$isUpdatingButton = false;
+    private boolean isUpdatingButton = false;
 
     protected CreateWorldScreenMixin(Component title) {
         super(title);
     }
 
     @Unique
-    private Button ctnhchangelog$findCreateButton() {
+    private Button findCreateWorldButton() {
         for (GuiEventListener child : this.children()) {
             if (child instanceof Button button) {
-                Component msg = button.getMessage();
-                String msgStr = msg.getString();
-                if (msgStr.contains("创建") ||
-                        msgStr.contains("Create") ||
-                        msg.equals(CREATE_WORLD_TEXT) ||
-                        msgStr.contains("查看详情") ||
-                        msgStr.contains("View Details") ||
-                        msg.equals(VIEW_CHANGELOG_TEXT)) {
+                Component message = button.getMessage();
+                String messageText = message.getString();
+                if (messageText.contains("创建") ||
+                        messageText.contains("Create") ||
+                        message.equals(CREATE_WORLD_TEXT) ||
+                        messageText.contains("查看详情") ||
+                        messageText.contains("View Details") ||
+                        message.equals(VIEW_DETAILS_TEXT)) {
                     return button;
                 }
             }
@@ -79,17 +79,14 @@ public abstract class CreateWorldScreenMixin extends Screen {
     private void onInit(CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        // 重置按钮状态
-        this.ctnhchangelog$resetButtonState();
-
-        // 主动触发一次按钮更新
-        this.ctnhchangelog$updateButtonForCurrentTab();
+        resetButtonState();
+        updateButtonForCurrentTab();
 
         if (ChangelogTab.shouldOpenChangelogTab) {
             ChangelogTab.shouldOpenChangelogTab = false;
-            for (Tab tab : this.ctnhchangelog$getAllTabs()) {
+            for (Tab tab : getAllTabs()) {
                 if (tab instanceof ChangelogTab) {
-                    this.tabManager.setCurrentTab(tab, true);
+                    tabManager.setCurrentTab(tab, true);
                     break;
                 }
             }
@@ -100,79 +97,74 @@ public abstract class CreateWorldScreenMixin extends Screen {
     private void onRepositionElements(CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        // 窗口大小变化时重新定位按钮
-        this.ctnhchangelog$updateButtonPosition();
+        updateButtonPosition();
     }
 
     @Unique
-    private void ctnhchangelog$resetButtonState() {
-        this.ctnhchangelog$originalCreateButtonText = null;
-        this.ctnhchangelog$originalPressCommand = null;
-        this.ctnhchangelog$currentButton = null;
+    private void resetButtonState() {
+        originalCreateButtonText = null;
+        originalCreateButtonCallback = null;
+        currentActionButton = null;
     }
 
     @Unique
-    private void ctnhchangelog$updateButtonPosition() {
-        if (this.ctnhchangelog$isUpdatingButton) return;
+    private void updateButtonPosition() {
+        if (isUpdatingButton) return;
 
-        Button currentButton = this.ctnhchangelog$findCreateButton();
-        if (currentButton != null && this.ctnhchangelog$currentButton != null) {
-            // 确保当前按钮位置正确
-            Tab currentTab = this.tabManager.getCurrentTab();
+        Button currentButton = findCreateWorldButton();
+        if (currentButton != null && currentActionButton != null) {
+            Tab currentTab = tabManager.getCurrentTab();
             if (currentTab instanceof ChangelogTab) {
-                // 如果当前是查看详情按钮，更新其位置
-                if (this.ctnhchangelog$currentButton.getMessage().getString().equals(VIEW_CHANGELOG_TEXT.getString())) {
-                    this.ctnhchangelog$currentButton.setX(currentButton.getX());
-                    this.ctnhchangelog$currentButton.setY(currentButton.getY());
+                if (currentActionButton.getMessage().getString().equals(VIEW_DETAILS_TEXT.getString())) {
+                    currentActionButton.setX(currentButton.getX());
+                    currentActionButton.setY(currentButton.getY());
                 }
             }
         }
     }
 
     @Unique
-    private void ctnhchangelog$updateButtonForCurrentTab() {
-        if (this.ctnhchangelog$isUpdatingButton) return;
+    private void updateButtonForCurrentTab() {
+        if (isUpdatingButton) return;
 
         try {
-            this.ctnhchangelog$isUpdatingButton = true;
+            isUpdatingButton = true;
 
-            Tab currentTab = this.tabManager.getCurrentTab();
-            Button currentCreateButton = this.ctnhchangelog$findCreateButton();
+            Tab currentTab = tabManager.getCurrentTab();
+            Button currentButton = findCreateWorldButton();
 
-            if (currentCreateButton != null) {
+            if (currentButton != null) {
                 if (currentTab instanceof ChangelogTab) {
-                    this.ctnhchangelog$switchToViewButton(currentCreateButton);
+                    switchToViewDetailsButton(currentButton);
                 } else {
-                    this.ctnhchangelog$switchToCreateButton(currentCreateButton);
+                    switchToCreateWorldButton(currentButton);
                 }
             }
         } finally {
-            this.ctnhchangelog$isUpdatingButton = false;
+            isUpdatingButton = false;
         }
     }
 
     @Unique
-    private void ctnhchangelog$switchToViewButton(Button currentCreateButton) {
-        // 保存原始按钮信息
-        if (this.ctnhchangelog$originalCreateButtonText == null) {
-            this.ctnhchangelog$originalCreateButtonText = currentCreateButton.getMessage();
+    private void switchToViewDetailsButton(Button currentButton) {
+        if (originalCreateButtonText == null) {
+            originalCreateButtonText = currentButton.getMessage();
         }
-        if (this.ctnhchangelog$originalPressCommand == null) {
+        if (originalCreateButtonCallback == null) {
             try {
                 Field pressField = Button.class.getDeclaredField("onPress");
                 pressField.setAccessible(true);
-                this.ctnhchangelog$originalPressCommand = (Button.OnPress) pressField.get(currentCreateButton);
+                originalCreateButtonCallback = (Button.OnPress) pressField.get(currentButton);
             } catch (Exception e) {
                 CTNHChangelog.LOGGER.error("Failed to access button onPress field", e);
             }
         }
 
-        // 如果当前按钮不是查看详情按钮，才进行替换
-        if (!currentCreateButton.getMessage().getString().equals(VIEW_CHANGELOG_TEXT.getString())) {
-            this.removeWidget(currentCreateButton);
+        if (!currentButton.getMessage().getString().equals(VIEW_DETAILS_TEXT.getString())) {
+            removeWidget(currentButton);
 
-            Button viewButton = Button.builder(VIEW_CHANGELOG_TEXT, button -> {
-                Tab currentTab = this.tabManager.getCurrentTab();
+            Button viewButton = Button.builder(VIEW_DETAILS_TEXT, button -> {
+                Tab currentTab = tabManager.getCurrentTab();
                 if (currentTab instanceof ChangelogTab changelogTab) {
                     ChangelogList list = changelogTab.getChangelogList();
                     ChangelogList.Entry selected = list != null ? list.getSelected() : null;
@@ -185,41 +177,40 @@ public abstract class CreateWorldScreenMixin extends Screen {
                         );
                     }
                 }
-            }).bounds(currentCreateButton.getX(), currentCreateButton.getY(),
-                    currentCreateButton.getWidth(), currentCreateButton.getHeight()).build();
+            }).bounds(currentButton.getX(), currentButton.getY(),
+                    currentButton.getWidth(), currentButton.getHeight()).build();
 
-            this.addRenderableWidget(viewButton);
-            this.ctnhchangelog$currentButton = viewButton;
+            addRenderableWidget(viewButton);
+            currentActionButton = viewButton;
         }
     }
 
     @Unique
-    private void ctnhchangelog$switchToCreateButton(Button currentCreateButton) {
-        // 只有当当前按钮是我们创建的查看详情按钮时，才恢复
-        if (this.ctnhchangelog$originalCreateButtonText != null &&
-                this.ctnhchangelog$originalPressCommand != null &&
-                this.ctnhchangelog$currentButton == currentCreateButton &&
-                currentCreateButton.getMessage().getString().equals(VIEW_CHANGELOG_TEXT.getString())) {
+    private void switchToCreateWorldButton(Button currentButton) {
+        if (originalCreateButtonText != null &&
+                originalCreateButtonCallback != null &&
+                currentActionButton == currentButton &&
+                currentButton.getMessage().getString().equals(VIEW_DETAILS_TEXT.getString())) {
 
-            this.removeWidget(currentCreateButton);
+            removeWidget(currentButton);
 
             Button originalButton = Button.builder(
-                            this.ctnhchangelog$originalCreateButtonText,
-                            this.ctnhchangelog$originalPressCommand)
-                    .bounds(currentCreateButton.getX(), currentCreateButton.getY(),
-                            currentCreateButton.getWidth(), currentCreateButton.getHeight())
+                            originalCreateButtonText,
+                            originalCreateButtonCallback)
+                    .bounds(currentButton.getX(), currentButton.getY(),
+                            currentButton.getWidth(), currentButton.getHeight())
                     .build();
 
-            this.addRenderableWidget(originalButton);
-            this.ctnhchangelog$currentButton = originalButton;
+            addRenderableWidget(originalButton);
+            currentActionButton = originalButton;
         }
     }
 
     @Unique
-    private Iterable<Tab> ctnhchangelog$getAllTabs() {
-        for (GuiEventListener child : this.children()) {
-            if (child instanceof TabNavigationBar navBar) {
-                return ((TabNavigationBarAccessor) navBar).getTabs();
+    private Iterable<Tab> getAllTabs() {
+        for (GuiEventListener child : children()) {
+            if (child instanceof TabNavigationBar navigationBar) {
+                return ((TabNavigationBarAccessor) navigationBar).getTabs();
             }
         }
         return Collections.emptyList();
@@ -229,15 +220,14 @@ public abstract class CreateWorldScreenMixin extends Screen {
     private void onRenderHead(GuiGraphics graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        // 每次渲染前检查并更新按钮状态
-        this.ctnhchangelog$updateButtonForCurrentTab();
+        updateButtonForCurrentTab();
     }
 
     @Inject(method = "render", at = @At("TAIL"))
     private void onRenderTail(GuiGraphics graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        Tab currentTab = this.tabManager.getCurrentTab();
+        Tab currentTab = tabManager.getCurrentTab();
         if (currentTab instanceof ChangelogTab changelogTab) {
             changelogTab.render(graphics, mouseX, mouseY, partialTick);
         }
@@ -247,7 +237,7 @@ public abstract class CreateWorldScreenMixin extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (!Config.isChangelogTabEnabled()) return super.mouseClicked(mouseX, mouseY, button);
 
-        Tab currentTab = this.tabManager.getCurrentTab();
+        Tab currentTab = tabManager.getCurrentTab();
         if (currentTab instanceof ChangelogTab changelogTab) {
             ChangelogList list = changelogTab.getChangelogList();
             if (list != null && list.mouseClicked(mouseX, mouseY, button)) {
@@ -261,7 +251,7 @@ public abstract class CreateWorldScreenMixin extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         if (!Config.isChangelogTabEnabled()) return super.mouseScrolled(mouseX, mouseY, delta);
 
-        Tab currentTab = this.tabManager.getCurrentTab();
+        Tab currentTab = tabManager.getCurrentTab();
         if (currentTab instanceof ChangelogTab changelogTab) {
             ChangelogList list = changelogTab.getChangelogList();
             if (list != null && list.mouseScrolled(mouseX, mouseY, delta)) {

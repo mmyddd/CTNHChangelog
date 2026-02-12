@@ -1,5 +1,6 @@
-package io.github.cpearl0.ctnhchangelog.client;
+package com.mmyddd.mcmod.changelog.client;
 
+import lombok.Getter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -15,6 +16,7 @@ public class ChangelogTab implements Tab {
     private static final Component TITLE = Component.translatable("ctnhchangelog.tab.title");
     public static boolean shouldOpenChangelogTab = false;
     private final CreateWorldScreen screen;
+    @Getter
     private ChangelogList changelogList;
     private ScreenRectangle tabArea;
 
@@ -92,7 +94,4 @@ public class ChangelogTab implements Tab {
         return 0xFF000000 | r << 16 | g << 8 | b;
     }
 
-    public ChangelogList getChangelogList() {
-        return changelogList;
-    }
 }

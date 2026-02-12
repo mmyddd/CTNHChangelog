@@ -1,11 +1,12 @@
-package io.github.cpearl0.ctnhchangelog.client;
+package com.mmyddd.mcmod.changelog.client;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import io.github.cpearl0.ctnhchangelog.CTNHChangelog;
-import io.github.cpearl0.ctnhchangelog.Config;
+import com.mmyddd.mcmod.changelog.CTNHChangelog;
+import com.mmyddd.mcmod.changelog.Config;
+import lombok.Getter;
 
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -33,6 +34,7 @@ public class ChangelogEntry {
     private static final Map<String, Integer> TAG_COLORS = new HashMap<>();
 
     private static List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
+    @Getter
     private static boolean isLoaded = false;
 
     public ChangelogEntry(String version, String date, String title, List<String> changes, String type, int color, List<String> tags) {
@@ -83,10 +85,6 @@ public class ChangelogEntry {
 
     public static List<ChangelogEntry> getAllEntries() {
         return ALL_ENTRIES;
-    }
-
-    public static boolean isLoaded() {
-        return isLoaded;
     }
 
     public static void loadAsync() {

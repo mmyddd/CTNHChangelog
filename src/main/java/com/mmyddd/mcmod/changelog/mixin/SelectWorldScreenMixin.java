@@ -1,7 +1,7 @@
-package io.github.cpearl0.ctnhchangelog.mixin;
+package com.mmyddd.mcmod.changelog.mixin;
 
-import io.github.cpearl0.ctnhchangelog.Config;
-import io.github.cpearl0.ctnhchangelog.client.ChangelogTab;
+import com.mmyddd.mcmod.changelog.Config;
+import com.mmyddd.mcmod.changelog.client.ChangelogTab;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -21,7 +21,7 @@ public abstract class SelectWorldScreenMixin extends Screen {
     private EditBox searchBox;
 
     @Unique
-    private Button ctnhchangelog$changelogButton;
+    private Button changelogButton;
 
     protected SelectWorldScreenMixin(Component title) {
         super(title);
@@ -31,55 +31,50 @@ public abstract class SelectWorldScreenMixin extends Screen {
     private void onInit(CallbackInfo ci) {
         if (!Config.isChangelogTabEnabled()) return;
 
-        // ✅ 延迟添加按钮，确保布局已完成
-        this.ctnhchangelog$addChangelogButton();
+        addChangelogButton();
     }
 
     @Inject(method = "tick", at = @At("TAIL"))
     private void onTick(CallbackInfo ci) {
-        // ✅ 在tick中检查并修复按钮位置
-        if (this.ctnhchangelog$changelogButton != null && this.searchBox != null) {
-            int expectedX = this.searchBox.getX() + this.searchBox.getWidth() + 4;
-            int expectedY = this.searchBox.getY();
+        if (changelogButton != null && searchBox != null) {
+            int expectedX = searchBox.getX() + searchBox.getWidth() + 4;
+            int expectedY = searchBox.getY();
 
-            // 如果位置不正确，重新放置
-            if (this.ctnhchangelog$changelogButton.getX() != expectedX ||
-                    this.ctnhchangelog$changelogButton.getY() != expectedY) {
-                this.ctnhchangelog$changelogButton.setX(expectedX);
-                this.ctnhchangelog$changelogButton.setY(expectedY);
+            if (changelogButton.getX() != expectedX || changelogButton.getY() != expectedY) {
+                changelogButton.setX(expectedX);
+                changelogButton.setY(expectedY);
             }
         }
     }
 
     @Unique
-    private void ctnhchangelog$addChangelogButton() {
-        if (this.searchBox == null) return;
+    private void addChangelogButton() {
+        if (searchBox == null) return;
 
         int buttonWidth = 60;
-        int buttonX = this.searchBox.getX() + this.searchBox.getWidth() + 4;
-        int buttonY = this.searchBox.getY();
-        int buttonHeight = this.searchBox.getHeight();
+        int buttonX = searchBox.getX() + searchBox.getWidth() + 4;
+        int buttonY = searchBox.getY();
+        int buttonHeight = searchBox.getHeight();
 
-        // ✅ 保存按钮引用以便后续调整
-        this.ctnhchangelog$changelogButton = Button.builder(
-                        Component.translatable("ctnhchangelog.button.changelog"),
-                        (button) -> {
+        changelogButton = Button.builder(
+                        Component.translatable("changelog.button.changelog"),
+                        button -> {
                             ChangelogTab.shouldOpenChangelogTab = true;
-                            CreateWorldScreen.openFresh(this.minecraft, this);
+                            CreateWorldScreen.openFresh(minecraft, this);
                         })
                 .bounds(buttonX, buttonY, buttonWidth, buttonHeight)
                 .build();
 
-        this.addRenderableWidget(this.ctnhchangelog$changelogButton);
+        addRenderableWidget(changelogButton);
     }
 
     @Override
     public void repositionElements() {
         super.repositionElements();
-        // ✅ 当界面元素重排时，也重新放置按钮
-        if (this.ctnhchangelog$changelogButton != null && this.searchBox != null) {
-            this.ctnhchangelog$changelogButton.setX(this.searchBox.getX() + this.searchBox.getWidth() + 4);
-            this.ctnhchangelog$changelogButton.setY(this.searchBox.getY());
+
+        if (changelogButton != null && searchBox != null) {
+            changelogButton.setX(searchBox.getX() + searchBox.getWidth() + 4);
+            changelogButton.setY(searchBox.getY());
         }
     }
 }
