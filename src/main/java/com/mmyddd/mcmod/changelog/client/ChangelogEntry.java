@@ -7,17 +7,21 @@ import com.google.gson.JsonParser;
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
 import com.mmyddd.mcmod.changelog.Config;
 import lombok.Getter;
+import net.minecraft.client.Minecraft;
 
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 
+@Getter
 public class ChangelogEntry {
     private static final int CONNECTION_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 10000;
@@ -38,6 +42,14 @@ public class ChangelogEntry {
     private static List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
     @Getter
     private static boolean isLoaded = false;
+    // 新增：检查是否真正加载完成
+    @Getter
+    private static boolean isLoadingComplete = false;
+
+    private static final String CACHE_DIR_NAME = ".cache";
+    private static final String CACHE_FILE_NAME = "changelog_cache.json";
+
+    private static Path cacheDirectory = null;
 
     public ChangelogEntry(String version, String date, String title, List<String> changes, List<String> types, int color, List<String> tags) {
         this.version = version;
@@ -47,34 +59,6 @@ public class ChangelogEntry {
         this.types = types != null ? types : new ArrayList<>();
         this.color = color;
         this.tags = tags != null ? tags : new ArrayList<>();
-    }
-
-    public String getVersion() {
-        return version;
-    }
-
-    public String getDate() {
-        return date;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public List<String> getChanges() {
-        return changes;
-    }
-
-    public List<String> getTypes() {
-        return types;
-    }
-
-    public int getColor() {
-        return color;
-    }
-
-    public List<String> getTags() {
-        return tags;
     }
 
     public boolean hasTag(String tag) {
@@ -87,6 +71,44 @@ public class ChangelogEntry {
 
     public static List<ChangelogEntry> getAllEntries() {
         return ALL_ENTRIES;
+    }
+
+    public static Path getCacheDirectory() {
+        if (cacheDirectory == null) {
+            cacheDirectory = initializeCacheDirectory();
+        }
+        return cacheDirectory;
+    }
+
+    private static Path initializeCacheDirectory() {
+        File gameDir = Minecraft.getInstance().gameDirectory;
+
+        Path cacheDir = new File(gameDir, CACHE_DIR_NAME).toPath();
+
+        CTNHChangelog.LOGGER.info("Cache directory: {}", cacheDir.toAbsolutePath());
+
+        try {
+            if (!Files.exists(cacheDir)) {
+                Files.createDirectories(cacheDir);
+                CTNHChangelog.LOGGER.info("Created cache directory: {}", cacheDir.toAbsolutePath());
+            } else {
+                CTNHChangelog.LOGGER.info("Cache directory already exists: {}", cacheDir.toAbsolutePath());
+            }
+            return cacheDir;
+        } catch (Exception e) {
+            CTNHChangelog.LOGGER.error("Failed to create cache directory: {}", e.getMessage());
+        }
+
+        CTNHChangelog.LOGGER.warn("Using temp directory for cache");
+        Path tempDir = Paths.get(System.getProperty("java.io.tmpdir"), CACHE_DIR_NAME);
+        try {
+            if (!Files.exists(tempDir)) {
+                Files.createDirectories(tempDir);
+            }
+        } catch (Exception e) {
+            CTNHChangelog.LOGGER.error("Failed to create temp directory: {}", e.getMessage());
+        }
+        return tempDir;
     }
 
     public static void loadAsync() {
@@ -108,6 +130,7 @@ public class ChangelogEntry {
                     CTNHChangelog.LOGGER.warn("Timeout waiting for config after 20 seconds, using local resources");
                     loadFromResources();
                     isLoaded = true;
+                    isLoadingComplete = true;
                     return;
                 }
 
@@ -118,27 +141,91 @@ public class ChangelogEntry {
                     CTNHChangelog.LOGGER.warn("Interrupted while waiting for config, using local resources");
                     loadFromResources();
                     isLoaded = true;
+                    isLoadingComplete = true;
                     return;
                 }
             }
 
-            CTNHChangelog.LOGGER.info("Attempting to load changelog from remote URL: {}", remoteUrl);
+            boolean success = loadData(remoteUrl);
 
-            if (loadFromRemote(remoteUrl)) {
-                CTNHChangelog.LOGGER.info("Loaded {} changelog entries from remote", ALL_ENTRIES.size());
-                CTNHChangelog.LOGGER.info("Loaded {} tag colors from remote", TAG_COLORS.size());
+            if (success) {
                 isLoaded = true;
-                return;
+            } else {
+                CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
+                loadFromResources();
+                isLoaded = true;
             }
-
-            CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
-            loadFromResources();
-            isLoaded = true;
+            isLoadingComplete = true;
         });
     }
 
-    private static boolean loadFromRemote(String urlStr) {
-        CTNHChangelog.LOGGER.info("Attempting to load changelog from remote URL: {}", urlStr);
+    public static void resetLoaded() {
+        isLoaded = false;
+        isLoadingComplete = false;
+    }
+
+    private static boolean loadData(String remoteUrl) {
+        try {
+            String remoteETag = fetchRemoteETag(remoteUrl);
+
+            if (remoteETag == null) {
+                CTNHChangelog.LOGGER.warn("Failed to fetch remote ETag, checking cache...");
+
+                Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
+                if (Files.exists(cacheFile)) {
+                    CTNHChangelog.LOGGER.info("Using cached data due to remote unavailable");
+                    byte[] cachedData = Files.readAllBytes(cacheFile);
+                    return loadFromStream(new ByteArrayInputStream(cachedData));
+                } else {
+                    CTNHChangelog.LOGGER.warn("No cache available, falling back to local resources");
+                    return false;
+                }
+            }
+
+            CTNHChangelog.LOGGER.info("Remote ETag: {}", remoteETag);
+
+            Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
+            Path etagFile = getCacheDirectory().resolve(CACHE_FILE_NAME + ".etag");
+
+            if (Files.exists(cacheFile) && Files.exists(etagFile)) {
+                byte[] cachedData = Files.readAllBytes(cacheFile);
+                String cachedETag = new String(Files.readAllBytes(etagFile), StandardCharsets.UTF_8).trim();
+
+                CTNHChangelog.LOGGER.info("Cached ETag: {}", cachedETag);
+
+                if (remoteETag.equals(cachedETag)) {
+                    CTNHChangelog.LOGGER.info("Cache is valid, using cached data");
+                    return loadFromStream(new ByteArrayInputStream(cachedData));
+                } else {
+                    CTNHChangelog.LOGGER.info("Cache ETag mismatch, need to refresh");
+                }
+            } else {
+                CTNHChangelog.LOGGER.info("Cache not found");
+            }
+
+            CTNHChangelog.LOGGER.info("Downloading from remote");
+            return downloadFromRemote(remoteUrl, remoteETag);
+
+        } catch (Exception e) {
+            CTNHChangelog.LOGGER.error("Failed to load data: {}", e.getMessage());
+
+            try {
+                Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
+                if (Files.exists(cacheFile)) {
+                    CTNHChangelog.LOGGER.info("Using cached data due to error");
+                    byte[] cachedData = Files.readAllBytes(cacheFile);
+                    return loadFromStream(new ByteArrayInputStream(cachedData));
+                }
+            } catch (Exception ex) {
+                CTNHChangelog.LOGGER.error("Failed to load cache on error recovery: {}", ex.getMessage());
+            }
+
+            return false;
+        }
+    }
+
+    private static boolean downloadFromRemote(String urlStr, String remoteETag) {
+        CTNHChangelog.LOGGER.info("Downloading from remote: {}", urlStr);
 
         HttpURLConnection connection = null;
         try {
@@ -153,23 +240,65 @@ public class ChangelogEntry {
             CTNHChangelog.LOGGER.info("Remote server response code: {}", responseCode);
 
             if (responseCode != 200) {
-                CTNHChangelog.LOGGER.warn("Remote JSON returned status code: {}", responseCode);
                 return false;
             }
 
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (InputStream is = connection.getInputStream()) {
-                boolean success = loadFromStream(is);
-                if (success) {
-                    CTNHChangelog.LOGGER.info("Successfully loaded changelog from remote");
-                } else {
-                    CTNHChangelog.LOGGER.warn("Failed to parse remote changelog");
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = is.read(buffer)) != -1) {
+                    baos.write(buffer, 0, len);
                 }
-                return success;
             }
+
+            byte[] data = baos.toByteArray();
+            CTNHChangelog.LOGGER.info("Downloaded {} bytes", data.length);
+
+            boolean success = loadFromStream(new ByteArrayInputStream(data));
+
+            if (success) {
+                Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
+                Path etagFile = getCacheDirectory().resolve(CACHE_FILE_NAME + ".etag");
+
+                Files.write(cacheFile, data);
+                Files.write(etagFile, remoteETag.getBytes(StandardCharsets.UTF_8));
+
+                CTNHChangelog.LOGGER.info("Successfully downloaded and cached changelog with ETag: {}", remoteETag);
+            }
+
+            return success;
+
         } catch (Exception e) {
-            CTNHChangelog.LOGGER.error("Failed to load changelog from remote: {}", e.getMessage());
-            e.printStackTrace();
+            CTNHChangelog.LOGGER.error("Failed to download from remote: {}", e.getMessage());
             return false;
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
+        }
+    }
+
+    private static String fetchRemoteETag(String urlStr) throws Exception {
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(urlStr);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("HEAD");
+            connection.setConnectTimeout(CONNECTION_TIMEOUT);
+            connection.setReadTimeout(READ_TIMEOUT);
+            connection.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode != 200) {
+                return null;
+            }
+
+            String etag = connection.getHeaderField("ETag");
+            if (etag != null) {
+                return etag.replace("\"", "").replace("W/", "").trim();
+            }
+            return null;
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -300,7 +429,7 @@ public class ChangelogEntry {
             CTNHChangelog.LOGGER.warn("Failed to parse color: {}, using default white", colorStr);
             return 0xFFFFFFFF;
         }
-        return 0xFFFFFFFF;
+        return 0;
     }
 
     private static void loadDefaultEntries() {

@@ -11,5 +11,6 @@
   "ctnhchangelog.version": "版本",
   "ctnhchangelog.changes": "更改内容",
   "ctnhchangelog.more_changes": "还有 %s 项更改...",
-  "ctnhchangelog.stats": "共 %s 个版本"
+  "ctnhchangelog.stats": "共 %s 个版本",
+  "ctnhchangelog.loading": "加载中..."
 }

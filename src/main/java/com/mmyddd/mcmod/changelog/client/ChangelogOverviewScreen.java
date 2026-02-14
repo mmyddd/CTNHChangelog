@@ -6,6 +6,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 public class ChangelogOverviewScreen extends Screen {
     private final Screen parentScreen;
@@ -14,6 +15,7 @@ public class ChangelogOverviewScreen extends Screen {
     private int listBottom;
     private int listLeft;
     private int listRight;
+    private boolean isLoading = false;
 
     public ChangelogOverviewScreen(Screen parent) {
         super(Component.translatable("ctnhchangelog.tab.title"));
@@ -39,14 +41,37 @@ public class ChangelogOverviewScreen extends Screen {
                         .bounds(this.width / 2 - 50, this.height - 30, 100, 20)
                         .build()
         );
-
-        // 添加刷新按钮
         this.addRenderableWidget(
                 Button.builder(
                                 Component.literal("↻"),
                                 button -> {
-                                    ChangelogEntry.loadAsync();
-                                    refreshList();
+                                    if (!isLoading) {
+                                        isLoading = true;
+                                        button.active = false;
+
+                                        ChangelogEntry.resetLoaded();
+
+                                        CompletableFuture.runAsync(() -> {
+                                            ChangelogEntry.loadAsync();
+
+                                            while (!ChangelogEntry.isLoadingComplete()) {
+                                                try {
+                                                    Thread.sleep(50);
+                                                } catch (InterruptedException e) {
+                                                    Thread.currentThread().interrupt();
+                                                    break;
+                                                }
+                                            }
+
+                                            if (this.minecraft != null) {
+                                                this.minecraft.execute(() -> {
+                                                    refreshList();
+                                                    isLoading = false;
+                                                    button.active = true;
+                                                });
+                                            }
+                                        });
+                                    }
                                 }
                         )
                         .bounds(this.width - 30, 10, 20, 20)
@@ -87,6 +112,11 @@ public class ChangelogOverviewScreen extends Screen {
                 "ctnhchangelog.stats",
                 entries.size()
         ).getString();
+
+        if (isLoading) {
+            stats = Component.translatable("ctnhchangelog.loading").getString() + " " + stats;
+        }
+
         graphics.drawString(
                 this.font,
                 stats,
