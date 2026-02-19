@@ -26,7 +26,7 @@ public class CTNHChangelog {
 
         DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
             LOGGER.info("Scheduling async changelog load");
-            ChangelogEntry.loadAsync();
+            ChangelogEntry.initLoader();
         });
     }
 

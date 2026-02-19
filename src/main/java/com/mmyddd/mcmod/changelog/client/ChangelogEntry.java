@@ -42,9 +42,12 @@ public class ChangelogEntry {
     private static List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
     @Getter
     private static boolean isLoaded = false;
-    // 新增：检查是否真正加载完成
     @Getter
     private static boolean isLoadingComplete = false;
+
+    private static boolean configLoaded = false;
+    private static String pendingRemoteUrl = null;
+    private static CompletableFuture<Void> loadFuture = null;
 
     private static final String CACHE_DIR_NAME = ".cache";
     private static final String CACHE_FILE_NAME = "changelog_cache.json";
@@ -59,6 +62,10 @@ public class ChangelogEntry {
         this.types = types != null ? types : new ArrayList<>();
         this.color = color;
         this.tags = tags != null ? tags : new ArrayList<>();
+    }
+
+    public static String getPendingRemoteUrl() {
+        return pendingRemoteUrl;
     }
 
     public boolean hasTag(String tag) {
@@ -111,57 +118,49 @@ public class ChangelogEntry {
         return tempDir;
     }
 
-    public static void loadAsync() {
-        CompletableFuture.runAsync(() -> {
-            int attempts = 0;
-            String remoteUrl;
+    public static void initLoader() {
+        CTNHChangelog.LOGGER.info("Initializing changelog loader, waiting for config...");
+        loadFuture = CompletableFuture.completedFuture(null);
+    }
 
-            CTNHChangelog.LOGGER.info("Waiting for config to load...");
+    public static void loadAfterConfig() {
+        configLoaded = true;
+        String remoteUrl = Config.getChangelogUrl();
 
-            while (true) {
-                remoteUrl = Config.getChangelogUrl();
-                if (remoteUrl != null && !remoteUrl.isEmpty()) {
-                    CTNHChangelog.LOGGER.info("Config loaded, URL: {}", remoteUrl);
-                    break;
-                }
+        CTNHChangelog.LOGGER.info("Config loaded, remote URL: {}", remoteUrl);
 
-                attempts++;
-                if (attempts > 200) {
-                    CTNHChangelog.LOGGER.warn("Timeout waiting for config after 20 seconds, using local resources");
+        if (remoteUrl != null && !remoteUrl.isEmpty()) {
+            if (loadFuture == null || loadFuture.isDone()) {
+                loadFuture = CompletableFuture.runAsync(() -> {
+                    boolean success = loadData(remoteUrl);
+                    if (success) {
+                        isLoaded = true;
+                        CTNHChangelog.LOGGER.info("Successfully loaded changelog from remote");
+                    } else {
+                        CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
+                        loadFromResources();
+                        isLoaded = true;
+                    }
+                    isLoadingComplete = true;
+                });
+            }
+        } else {
+            CTNHChangelog.LOGGER.info("No remote URL configured, using local resources");
+            if (loadFuture == null || loadFuture.isDone()) {
+                loadFuture = CompletableFuture.runAsync(() -> {
                     loadFromResources();
                     isLoaded = true;
                     isLoadingComplete = true;
-                    return;
-                }
-
-                try {
-                    Thread.sleep(100);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    CTNHChangelog.LOGGER.warn("Interrupted while waiting for config, using local resources");
-                    loadFromResources();
-                    isLoaded = true;
-                    isLoadingComplete = true;
-                    return;
-                }
+                });
             }
-
-            boolean success = loadData(remoteUrl);
-
-            if (success) {
-                isLoaded = true;
-            } else {
-                CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
-                loadFromResources();
-                isLoaded = true;
-            }
-            isLoadingComplete = true;
-        });
+        }
     }
 
     public static void resetLoaded() {
         isLoaded = false;
         isLoadingComplete = false;
+        configLoaded = false;
+        pendingRemoteUrl = null;
     }
 
     private static boolean loadData(String remoteUrl) {
@@ -189,7 +188,7 @@ public class ChangelogEntry {
 
             if (Files.exists(cacheFile) && Files.exists(etagFile)) {
                 byte[] cachedData = Files.readAllBytes(cacheFile);
-                String cachedETag = new String(Files.readAllBytes(etagFile), StandardCharsets.UTF_8).trim();
+                String cachedETag = Files.readString(etagFile).trim();
 
                 CTNHChangelog.LOGGER.info("Cached ETag: {}", cachedETag);
 
@@ -262,7 +261,7 @@ public class ChangelogEntry {
                 Path etagFile = getCacheDirectory().resolve(CACHE_FILE_NAME + ".etag");
 
                 Files.write(cacheFile, data);
-                Files.write(etagFile, remoteETag.getBytes(StandardCharsets.UTF_8));
+                Files.writeString(etagFile, remoteETag);
 
                 CTNHChangelog.LOGGER.info("Successfully downloaded and cached changelog with ETag: {}", remoteETag);
             }

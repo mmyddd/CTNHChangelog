@@ -1,5 +1,6 @@
 package com.mmyddd.mcmod.changelog;
 
+import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
 import lombok.Getter;
 import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
@@ -42,6 +43,8 @@ public class Config {
             enableChangelogTab = ENABLE_CHANGELOG_TAB.get();
             CTNHChangelog.LOGGER.info("Config loaded - changelogUrl: {}, enableChangelogTab: {}",
                     changelogUrl, enableChangelogTab);
+
+            ChangelogEntry.loadAfterConfig();
         }
     }
 }

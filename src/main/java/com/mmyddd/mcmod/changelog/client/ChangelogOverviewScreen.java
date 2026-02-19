@@ -52,8 +52,7 @@ public class ChangelogOverviewScreen extends Screen {
                                         ChangelogEntry.resetLoaded();
 
                                         CompletableFuture.runAsync(() -> {
-                                            ChangelogEntry.loadAsync();
-
+                                            ChangelogEntry.loadAfterConfig();
                                             while (!ChangelogEntry.isLoadingComplete()) {
                                                 try {
                                                     Thread.sleep(50);
