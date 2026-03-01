@@ -3,7 +3,6 @@ package com.mmyddd.mcmod.changelog.mixin;
 import com.mmyddd.mcmod.changelog.Config;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
 import com.mmyddd.mcmod.changelog.client.ChangelogOverviewScreen;
-import com.mmyddd.mcmod.changelog.client.ChangelogDetailScreen;
 import com.mmyddd.mcmod.changelog.client.VersionCheckService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -12,6 +11,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.worldselection.SelectWorldScreen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -32,16 +32,11 @@ public abstract class SelectWorldScreenMixin extends Screen {
     private boolean ctnhHasUpdate = false;
 
     @Unique
-    private long ctnhLastBlinkTime = 0;
+    private static final int BLINK_INTERVAL = 800; // 800ms 闪烁周期，与Forge一致
 
     @Unique
-    private boolean ctnhBlinkState = true;
-
-    @Unique
-    private static final int BLINK_INTERVAL = 800; // 800ms 闪烁周期
-
-    @Unique
-    private static final int BORDER_COLOR = 0xFFFFFF00; // 黄色 (ARGB)
+    private static final ResourceLocation VERSION_CHECK_ICONS = 
+            ResourceLocation.tryBuild("forge", "textures/gui/version_check_icons.png");
 
     protected SelectWorldScreenMixin(Component title) {
         super(title);
@@ -60,11 +55,7 @@ public abstract class SelectWorldScreenMixin extends Screen {
         if (!Config.isChangelogTabEnabled() || searchBox == null) return;
         if (!Config.showButtonOnSelectWorld()) return;
 
-        ctnhChangelogButton = new ChangelogButton(
-                searchBox.getX() + searchBox.getWidth() + 4,
-                searchBox.getY(),
-                60,
-                searchBox.getHeight(),
+        ctnhChangelogButton = Button.builder(
                 Component.translatable("ctnhchangelog.button.changelog"),
                 button -> {
                     ChangelogEntry.resetLoaded();
@@ -73,7 +64,7 @@ public abstract class SelectWorldScreenMixin extends Screen {
                             new ChangelogOverviewScreen((SelectWorldScreen) (Object) this)
                     );
                 }
-        );
+        ).bounds(searchBox.getX() + searchBox.getWidth() + 3, searchBox.getY(), 65, searchBox.getHeight()).build();
 
         addRenderableWidget(ctnhChangelogButton);
     }
@@ -88,41 +79,26 @@ public abstract class SelectWorldScreenMixin extends Screen {
         } else {
             ctnhHasUpdate = false;
         }
-
-        if (ctnhHasUpdate) {
-            long currentTime = System.currentTimeMillis();
-            if (currentTime - ctnhLastBlinkTime > BLINK_INTERVAL) {
-                ctnhLastBlinkTime = currentTime;
-                ctnhBlinkState = !ctnhBlinkState;
-            }
-        } else {
-            ctnhBlinkState = false;
-        }
     }
 
-    @Unique
-    private class ChangelogButton extends Button {
-        public ChangelogButton(int x, int y, int width, int height, Component message, OnPress onPress) {
-            super(x, y, width, height, message, onPress, Button.DEFAULT_NARRATION);
-        }
+    @Inject(method = "render", at = @At("TAIL"))
+    private void onRender(GuiGraphics graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
+        if (!ctnhHasUpdate || ctnhChangelogButton == null) return;
 
-        @Override
-        public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-            super.renderWidget(graphics, mouseX, mouseY, partialTick);
+        int x = ctnhChangelogButton.getX();
+        int y = ctnhChangelogButton.getY();
+        int w = ctnhChangelogButton.getWidth();
+        int h = ctnhChangelogButton.getHeight();
 
-            if (ctnhHasUpdate && ctnhBlinkState) {
-                int x = this.getX();
-                int y = this.getY();
-                int width = this.getWidth();
-                int height = this.getHeight();
+        int iconX = x + w - (h / 2 + 4);
+        int iconY = y + (h / 2 - 4);
 
-                int borderWidth = 1;
+        int sheetOffset = 3;
+        int u = sheetOffset * 8;
 
-                graphics.fill(x, y, x + width, y + borderWidth, BORDER_COLOR);
-                graphics.fill(x, y + height - borderWidth, x + width, y + height, BORDER_COLOR);
-                graphics.fill(x, y, x + borderWidth, y + height, BORDER_COLOR);
-                graphics.fill(x + width - borderWidth, y, x + width, y + height, BORDER_COLOR);
-            }
-        }
+        boolean blink = (System.currentTimeMillis() / BLINK_INTERVAL & 1) == 1;
+        int v = blink ? 8 : 0;
+
+        graphics.blit(VERSION_CHECK_ICONS, iconX, iconY, u, v, 8, 8, 64, 16);
     }
 }
