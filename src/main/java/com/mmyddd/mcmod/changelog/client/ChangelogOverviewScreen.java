@@ -1,6 +1,7 @@
 package com.mmyddd.mcmod.changelog.client;
 
 import com.mmyddd.mcmod.changelog.Config;
+import lombok.Getter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
@@ -14,7 +15,9 @@ public class ChangelogOverviewScreen extends Screen {
     private ChangelogList changelogList;
     private int listTop;
     private int listBottom;
+    @Getter
     private int listLeft;
+    @Getter
     private int listRight;
     private boolean isLoading = false;
 
@@ -207,11 +210,4 @@ public class ChangelogOverviewScreen extends Screen {
         return false;
     }
 
-    public int getListLeft() {
-        return listLeft;
-    }
-
-    public int getListRight() {
-        return listRight;
-    }
 }
