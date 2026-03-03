@@ -868,11 +868,13 @@
                 color: "0xFFFFFF00",
                 changes: ["Example"]
             };
-            currentData.entries.push(newEntry);
+            // 将新条目添加到数组最前面（最新版本在上）
+            currentData.entries.unshift(newEntry);
             renderEntries();
             updatePreview();
             showToast('新增条目成功');
-            setTimeout(() => navigateToVersion(currentData.entries.length - 1), 100);
+            // 滚动到新条目（索引0，即最顶端）
+            setTimeout(() => navigateToVersion(0), 100);
         }
 
         function deleteEntry(index) {
