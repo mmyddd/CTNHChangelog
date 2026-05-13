@@ -3,6 +3,7 @@ package com.mmyddd.mcmod.changelog.mixin;
 import com.mmyddd.mcmod.changelog.Config;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
 import com.mmyddd.mcmod.changelog.client.ChangelogOverviewScreen;
+import com.mmyddd.mcmod.changelog.client.MixinHelper;
 import com.mmyddd.mcmod.changelog.client.VersionCheckService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;

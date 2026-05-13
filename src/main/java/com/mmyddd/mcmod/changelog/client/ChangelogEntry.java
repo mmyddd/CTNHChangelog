@@ -79,6 +79,10 @@ public class ChangelogEntry {
         return TAG_COLORS.getOrDefault(tag, 0xFF888888);
     }
 
+    public static Map<String, Integer> getTagColorsMap() {
+        return new HashMap<>(TAG_COLORS);
+    }
+
     public static List<ChangelogEntry> getAllEntries() {
         return ALL_ENTRIES;
     }

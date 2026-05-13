@@ -13,5 +13,21 @@
   "ctnhchangelog.more_changes": "还有 %s 项更改...",
   "ctnhchangelog.stats": "共 %s 个版本",
   "ctnhchangelog.loading": "加载中...",
-  "ctnhchangelog.update_available": "发现更新! 当前版本: %s, 最新版本: %s"
+  "ctnhchangelog.update_available": "发现更新! 当前版本: %s, 最新版本: %s",
+  "ctnhchangelog.editor.title": "更新日志编辑器",
+  "ctnhchangelog.editor.tab.entries": "条目",
+  "ctnhchangelog.editor.tab.tags": "标签",
+  "ctnhchangelog.editor.tab.footer": "脚注",
+  "ctnhchangelog.editor.import": "导入",
+  "ctnhchangelog.editor.export": "导出",
+  "ctnhchangelog.editor.close": "关闭",
+  "ctnhchangelog.editor.new_entry": "新增条目",
+  "ctnhchangelog.editor.delete": "删除",
+  "ctnhchangelog.editor.add_tag": "添加标签",
+  "ctnhchangelog.editor.add_change": "添加变更",
+  "ctnhchangelog.editor.double_click_edit": "双击修改已有条目",
+  "ctnhchangelog.editor.select_entry": "选择一个条目进行编辑",
+  "ctnhchangelog.editor.exported": "JSON 已导出到游戏目录",
+  "ctnhchangelog.editor.imported": "JSON 导入成功",
+  "ctnhchangelog.editor.import_error": "导入失败：无效的 JSON"
 }

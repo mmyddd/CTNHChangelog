@@ -13,5 +13,21 @@
   "ctnhchangelog.more_changes": "and %s more changes...",
   "ctnhchangelog.stats": "Total %s versions",
   "ctnhchangelog.loading": "Loading...",
-  "ctnhchangelog.update_available":  "Update found! Current version: %s, Latest version: %s"
+  "ctnhchangelog.update_available":  "Update found! Current version: %s, Latest version: %s",
+  "ctnhchangelog.editor.title": "Changelog Editor",
+  "ctnhchangelog.editor.tab.entries": "Entries",
+  "ctnhchangelog.editor.tab.tags": "Tag Colors",
+  "ctnhchangelog.editor.tab.footer": "Footer",
+  "ctnhchangelog.editor.import": "Import",
+  "ctnhchangelog.editor.export": "Export",
+  "ctnhchangelog.editor.close": "Close",
+  "ctnhchangelog.editor.new_entry": "New Entry",
+  "ctnhchangelog.editor.delete": "Delete",
+  "ctnhchangelog.editor.add_tag": "Add Tag",
+  "ctnhchangelog.editor.add_change": "Add Change",
+  "ctnhchangelog.editor.double_click_edit": "Double-click to edit existing entry",
+  "ctnhchangelog.editor.select_entry": "Select an entry to edit",
+  "ctnhchangelog.editor.exported": "JSON exported to game directory",
+  "ctnhchangelog.editor.imported": "JSON imported successfully",
+  "ctnhchangelog.editor.import_error": "Import failed: invalid JSON"
 }

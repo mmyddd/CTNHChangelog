@@ -25,6 +25,7 @@ public class Config {
     private static final ForgeConfigSpec.ConfigValue<String> MODPACK_VERSION;
     private static final ForgeConfigSpec.BooleanValue ENABLE_CHANGELOG_TAB;
     private static final ForgeConfigSpec.BooleanValue ENABLE_VERSION_CHECK;
+    private static final ForgeConfigSpec.BooleanValue ENABLE_EDITOR;
     private static final ForgeConfigSpec.EnumValue<ButtonLocation> BUTTON_LOCATION;
 
     static final ForgeConfigSpec SPEC;
@@ -36,6 +37,8 @@ public class Config {
     private static boolean enableChangelogTab = true;
     @Getter
     private static boolean enableVersionCheck = true; // 默认启用
+    @Getter
+    private static boolean enableEditor = false; // 默认关闭
     @Getter
     private static ButtonLocation buttonLocation = ButtonLocation.BOTH;
 
@@ -55,6 +58,10 @@ public class Config {
         ENABLE_VERSION_CHECK = BUILDER
                 .comment("是否启用版本更新检查", "如果禁用，将不会对比ModpackVersion和远程最新版本", "也不会显示更新提示")
                 .define("enableVersionCheck", true);
+
+        ENABLE_EDITOR = BUILDER
+                .comment("是否启用游戏内更新日志编辑器", "启用后在更新日志界面显示编辑按钮", "默认关闭")
+                .define("enableEditor", false);
 
         BUTTON_LOCATION = BUILDER
                 .comment("按钮显示位置", "BOTH - 在标题界面和选择世界界面都显示", "TITLE_SCREEN - 仅在标题界面显示", "SELECT_WORLD - 仅在选择世界界面显示")
@@ -82,10 +89,11 @@ public class Config {
             modpackVersion = MODPACK_VERSION.get();
             enableChangelogTab = ENABLE_CHANGELOG_TAB.get();
             enableVersionCheck = ENABLE_VERSION_CHECK.get();
+            enableEditor = ENABLE_EDITOR.get();
             buttonLocation = BUTTON_LOCATION.get();
 
-            CTNHChangelog.LOGGER.info("Config loaded - changelogUrl: {}, modpackVersion: {}, enableChangelogTab: {}, enableVersionCheck: {}, buttonLocation: {}",
-                    changelogUrl, modpackVersion, enableChangelogTab, enableVersionCheck, buttonLocation);
+            CTNHChangelog.LOGGER.info("Config loaded - changelogUrl: {}, modpackVersion: {}, enableChangelogTab: {}, enableVersionCheck: {}, enableEditor: {}, buttonLocation: {}",
+                    changelogUrl, modpackVersion, enableChangelogTab, enableVersionCheck, enableEditor, buttonLocation);
 
             ChangelogEntry.loadAfterConfig();
         }

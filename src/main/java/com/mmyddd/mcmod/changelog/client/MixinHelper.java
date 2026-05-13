@@ -1,14 +1,13 @@
-package com.mmyddd.mcmod.changelog.mixin;
+package com.mmyddd.mcmod.changelog.client;
 
 import com.mmyddd.mcmod.changelog.Config;
-import com.mmyddd.mcmod.changelog.client.ChangelogUtils;
-import com.mmyddd.mcmod.changelog.client.VersionCheckService;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.resources.ResourceLocation;
 
 /**
  * Mixin 共享逻辑工具类，消除 TitleScreenMixin 和 SelectWorldScreenMixin 中的重复代码。
+ * 注意：此类不能放在 mixin 包中，否则会被 Mixin 框架拦截导致 IllegalClassLoadError。
  */
 public final class MixinHelper {
 
@@ -22,10 +21,6 @@ public final class MixinHelper {
 
     /**
      * 检查是否有可用更新。
-     * <p>
-     * 仅在启用版本检查且检查已完成时才返回真实结果，否则返回 false。
-     *
-     * @return 是否有更新
      */
     public static boolean checkUpdateStatus() {
         if (Config.isEnableVersionCheck() && VersionCheckService.isCheckDone()) {
@@ -36,9 +31,6 @@ public final class MixinHelper {
 
     /**
      * 在按钮右上角渲染闪烁的更新提示图标。
-     *
-     * @param graphics GUI 图形上下文
-     * @param button   目标按钮
      */
     public static void renderUpdateIcon(GuiGraphics graphics, Button button) {
         int x = button.getX();
