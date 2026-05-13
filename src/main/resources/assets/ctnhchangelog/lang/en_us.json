@@ -16,7 +16,7 @@
   "ctnhchangelog.update_available":  "Update found! Current version: %s, Latest version: %s",
   "ctnhchangelog.editor.title": "Changelog Editor",
   "ctnhchangelog.editor.tab.entries": "Entries",
-  "ctnhchangelog.editor.tab.tags": "Tag Colors",
+  "ctnhchangelog.editor.tab.tags": "Tags",
   "ctnhchangelog.editor.tab.footer": "Footer",
   "ctnhchangelog.editor.import": "Import",
   "ctnhchangelog.editor.export": "Export",
