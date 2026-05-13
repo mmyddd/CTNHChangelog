@@ -75,5 +75,57 @@ The configuration file is located at `config/ctnhchangelog-client.toml`.
 
 
 Example: [changelog.json](src/main/resources/changelog.json)
-A Useful Tool [CTNHChangelog](https://mmyddd.github.io/CTNHChangelog/)
+
+
+---
+
+## In-Game Editor / 游戏内编辑器
+
+### English
+
+The mod includes a built-in changelog editor accessible from the changelog screen.
+
+**Opening the Editor:**
+- Click the "Edit" button in the top-right corner of the changelog overview screen
+
+**Editor Features:**
+
+| Tab | Description |
+|-----|-------------|
+| **Entries** | Add, delete, reorder changelog entries; edit version, date, title, type, tags, color, and changes |
+| **Tag Colors** | Define custom tag colors for use in entries |
+| **Footer** | Edit the gradient footer text displayed at the bottom |
+
+**Editing Changes:**
+- Double-click an existing change entry to edit it
+- Press `Enter` to confirm the edit
+- Press `Escape` to cancel and revert to the original text
+
+**Import/Export:**
+- Use the "Import" button to load a JSON file from the game directory
+- Use the "Export" button to save the current changelog as JSON to the game directory
+
+### 中文
+
+模组内置了更新日志编辑器，可从更新日志界面打开。
+
+**打开编辑器：**
+- 点击更新日志概览界面右上角的"编辑"按钮
+
+**编辑器功能：**
+
+| 标签页 | 说明 |
+|--------|------|
+| **条目** | 添加、删除、排序更新日志条目；编辑版本号、日期、标题、类型、标签、颜色和变更内容 |
+| **标签颜色** | 定义自定义标签颜色，供条目使用 |
+| **脚注** | 编辑显示在底部的渐变色脚注文本 |
+
+**编辑变更内容：**
+- 双击已有变更条目即可进入编辑模式
+- 按 `Enter` 确认修改
+- 按 `Escape` 取消修改并恢复原文
+
+**导入/导出：**
+- 使用"导入"按钮从游戏目录加载 JSON 文件
+- 使用"导出"按钮将当前更新日志保存为 JSON 文件到游戏目录
 
