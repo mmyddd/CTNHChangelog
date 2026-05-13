@@ -10,7 +10,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
+
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,13 +25,6 @@ public abstract class TitleScreenMixin extends Screen {
 
     @Unique
     private boolean ctnhHasUpdate = false;
-
-    @Unique
-    private static final int BLINK_INTERVAL = 800; // 800ms 闪烁周期，与Forge一致
-
-    @Unique
-    private static final ResourceLocation VERSION_CHECK_ICONS =
-            ResourceLocation.tryBuild("forge", "textures/gui/version_check_icons.png");
 
     protected TitleScreenMixin(Component title) {
         super(title);
@@ -70,32 +63,12 @@ public abstract class TitleScreenMixin extends Screen {
     @Override
     public void tick() {
         super.tick();
-
-        if (Config.isEnableVersionCheck() && VersionCheckService.isCheckDone()) {
-            ctnhHasUpdate = VersionCheckService.hasUpdate();
-        } else {
-            ctnhHasUpdate = false;
-        }
+        ctnhHasUpdate = MixinHelper.checkUpdateStatus();
     }
 
     @Inject(method = "render", at = @At("TAIL"))
     private void onRender(GuiGraphics graphics, int mouseX, int mouseY, float partialTick, CallbackInfo ci) {
         if (!ctnhHasUpdate || ctnhChangelogButton == null) return;
-
-        int x = ctnhChangelogButton.getX();
-        int y = ctnhChangelogButton.getY();
-        int w = ctnhChangelogButton.getWidth();
-        int h = ctnhChangelogButton.getHeight();
-
-        int iconX = x + w - (h / 2 + 4);
-        int iconY = y + (h / 2 - 4);
-
-        int sheetOffset = 3;
-        int u = sheetOffset * 8;
-
-        boolean blink = (System.currentTimeMillis() / BLINK_INTERVAL & 1) == 1;
-        int v = blink ? 8 : 0;
-
-        graphics.blit(VERSION_CHECK_ICONS, iconX, iconY, u, v, 8, 8, 64, 16);
+        MixinHelper.renderUpdateIcon(graphics, ctnhChangelogButton);
     }
 }

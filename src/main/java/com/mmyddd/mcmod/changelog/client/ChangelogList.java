@@ -8,15 +8,16 @@ import net.minecraft.client.gui.components.ObjectSelectionList;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
 
-    private static long lastBlinkTime = 0;
-    private static boolean blinkState = true;
-    private static final int BLINK_INTERVAL = 800;
+    private static final int MAX_PREVIEW_LENGTH = 60;
+    private long lastBlinkTime = 0;
+    private boolean blinkState = true;
 
     public ChangelogList(Minecraft minecraft, int width, int height, int y0, int y1, int itemHeight) {
         super(minecraft, width, height, y0, y1, itemHeight);
@@ -47,7 +48,7 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         Entry selected = this.getSelected();
-        if (selected != null && keyCode == 257) {
+        if (selected != null && keyCode == GLFW.GLFW_KEY_ENTER) {
             this.openDetailScreen(selected);
             return true;
         }
@@ -64,7 +65,7 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         long currentTime = System.currentTimeMillis();
-        if (currentTime - lastBlinkTime > BLINK_INTERVAL) {
+        if (currentTime - lastBlinkTime > ChangelogUtils.BLINK_INTERVAL) {
             lastBlinkTime = currentTime;
             blinkState = !blinkState;
         }
@@ -77,26 +78,24 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
         private long lastClickTime = 0;
 
         private final int typeColor;
-        private final List<DisplayTag> displayTags = new ArrayList<>();
+        private final List<ChangelogUtils.DisplayTag> displayTags = new ArrayList<>();
 
         public Entry(ChangelogEntry entry) {
             this.changelogEntry = entry;
 
             List<String> types = entry.getTypes();
             String primaryType = types.isEmpty() ? "patch" : types.get(0);
-            this.typeColor = getTypeColor(primaryType);
+            this.typeColor = ChangelogUtils.getTypeColor(primaryType);
 
             for (String type : types) {
-                String translatedType = getTranslatedTypeTag(type);
-                if (translatedType != null) {
-                    int color = getTypeColor(type);
-                    displayTags.add(new DisplayTag(translatedType, color));
-                }
+                String translatedType = ChangelogUtils.getTranslatedTypeTag(type);
+                int color = ChangelogUtils.getTypeColor(type);
+                displayTags.add(new ChangelogUtils.DisplayTag(translatedType, color));
             }
 
             for (String tag : entry.getTags()) {
                 int color = ChangelogEntry.getTagColor(tag);
-                displayTags.add(new DisplayTag(tag, color));
+                displayTags.add(new ChangelogUtils.DisplayTag(tag, color));
             }
         }
 
@@ -140,7 +139,7 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
             int tagStartX = textLeft + font.width(versionDisplay) + 6;
             if (!displayTags.isEmpty()) {
                 int currentX = tagStartX;
-                for (DisplayTag displayTag : displayTags) {
+                for (ChangelogUtils.DisplayTag displayTag : displayTags) {
                     int tagWidth = font.width(displayTag.text) + 6;
                     int tagHeight = 10;
 
@@ -166,8 +165,8 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
 
             if (!changelogEntry.getChanges().isEmpty()) {
                 String preview = "• " + changelogEntry.getChanges().get(0);
-                if (preview.length() > 60) {
-                    preview = preview.substring(0, 57) + "...";
+                if (preview.length() > MAX_PREVIEW_LENGTH) {
+                    preview = preview.substring(0, MAX_PREVIEW_LENGTH - 3) + "...";
                 }
                 graphics.drawString(font, preview, textLeft, line3Y, 0xFFAAAAAA);
 
@@ -215,38 +214,6 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
                 case "hotfix" -> "◆";
                 default -> "•";
             };
-        }
-
-        private int getTypeColor(String type) {
-            return switch (type) {
-                case "major" -> 0xFF5555FF;
-                case "minor" -> 0xFF55FF55;
-                case "patch" -> 0xFFFFFF55;
-                case "hotfix" -> 0xFFFF5555;
-                case "danger" -> 0xFFFF5555;
-                default -> 0xFF888888;
-            };
-        }
-
-        private String getTranslatedTypeTag(String type) {
-            return switch (type) {
-                case "major" -> Component.translatable("ctnhchangelog.type.major").getString();
-                case "minor" -> Component.translatable("ctnhchangelog.type.minor").getString();
-                case "patch" -> Component.translatable("ctnhchangelog.type.patch").getString();
-                case "hotfix" -> Component.translatable("ctnhchangelog.type.hotfix").getString();
-                case "danger" -> Component.translatable("ctnhchangelog.type.danger").getString();
-                default -> null;
-            };
-        }
-
-        private static class DisplayTag {
-            final String text;
-            final int color;
-
-            DisplayTag(String text, int color) {
-                this.text = text;
-                this.color = color;
-            }
         }
     }
 }

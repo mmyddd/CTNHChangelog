@@ -11,6 +11,7 @@ import net.minecraftforge.api.distmarker.OnlyIn;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -20,11 +21,12 @@ import java.util.concurrent.Executors;
 public class VersionCheckService {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
 
-    private static boolean hasUpdate = false;
+    // volatile 保证多线程间的可见性：EXECUTOR 线程写入，UI 线程读取
+    private static volatile boolean hasUpdate = false;
     @Getter
-    private static boolean checkDone = false;
+    private static volatile boolean checkDone = false;
     @Getter
-    private static String latestChangelogVersion = "";
+    private static volatile String latestChangelogVersion = "";
 
     public static void checkForUpdate() {
         if (!Config.isEnableVersionCheck()) {
@@ -64,27 +66,33 @@ public class VersionCheckService {
             return null;
         }
 
-        URL url = new URL(urlStr);
+        // 使用 URI.create().toURL() 替代已弃用的 new URL() 构造函数
+        URL url = URI.create(urlStr).toURL();
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        conn.setConnectTimeout(5000);
-        conn.setReadTimeout(5000);
-        conn.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
+        try {
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
 
-        int responseCode = conn.getResponseCode();
-        if (responseCode != 200) {
-            CTNHChangelog.LOGGER.warn("Failed to fetch changelog.json, response code: {}", responseCode);
-            return null;
-        }
-
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-            if (root.has("entries") && !root.getAsJsonArray("entries").isEmpty()) {
-                return root.getAsJsonArray("entries").get(0).getAsJsonObject().get("version").getAsString();
+            int responseCode = conn.getResponseCode();
+            if (responseCode != 200) {
+                CTNHChangelog.LOGGER.warn("Failed to fetch changelog.json, response code: {}", responseCode);
+                return null;
             }
-        }
 
-        CTNHChangelog.LOGGER.warn("No entries found in changelog.json");
-        return null;
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
+                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                if (root.has("entries") && !root.getAsJsonArray("entries").isEmpty()) {
+                    return root.getAsJsonArray("entries").get(0).getAsJsonObject().get("version").getAsString();
+                }
+            }
+
+            CTNHChangelog.LOGGER.warn("No entries found in changelog.json");
+            return null;
+        } finally {
+            // 确保 HttpURLConnection 在所有路径上都被关闭，防止连接泄漏
+            conn.disconnect();
+        }
     }
 
     public static boolean hasUpdate() {
@@ -92,6 +100,11 @@ public class VersionCheckService {
             return false;
         }
         return hasUpdate;
+    }
+
+    // 关闭线程池，防止应用退出时线程泄漏
+    public static void shutdown() {
+        EXECUTOR.shutdown();
     }
 
     public static void reset() {

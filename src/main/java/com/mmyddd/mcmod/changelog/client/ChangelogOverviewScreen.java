@@ -59,10 +59,10 @@ public class ChangelogOverviewScreen extends Screen {
                                             ChangelogEntry.loadAfterConfig();
                                             while (!ChangelogEntry.isLoadingComplete()) {
                                                 try {
-                                                    Thread.sleep(50);
+                                                    Thread.sleep(100);
                                                 } catch (InterruptedException e) {
                                                     Thread.currentThread().interrupt();
-                                                    break;
+                                                    return;
                                                 }
                                             }
 

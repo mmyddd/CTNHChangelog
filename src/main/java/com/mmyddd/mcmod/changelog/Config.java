@@ -70,6 +70,7 @@ public class Config {
     public static boolean showButtonOnTitleScreen() {
         return buttonLocation == ButtonLocation.BOTH || buttonLocation == ButtonLocation.TITLE_SCREEN;
     }
+
     public static boolean showButtonOnSelectWorld() {
         return buttonLocation == ButtonLocation.BOTH || buttonLocation == ButtonLocation.SELECT_WORLD;
     }

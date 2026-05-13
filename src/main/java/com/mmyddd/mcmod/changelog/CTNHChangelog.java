@@ -2,6 +2,7 @@ package com.mmyddd.mcmod.changelog;
 
 import com.mojang.logging.LogUtils;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
+import com.mmyddd.mcmod.changelog.client.VersionCheckService;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.ModLoadingContext;
@@ -28,6 +29,12 @@ public class CTNHChangelog {
             LOGGER.info("Scheduling async changelog load");
             ChangelogEntry.initLoader();
         });
+
+        // 注册 JVM 关闭钩子，确保线程池在应用退出时被正确关闭
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            VersionCheckService.shutdown();
+            LOGGER.info("VersionCheckService executor shut down");
+        }));
     }
 
     @Mod.EventBusSubscriber(modid = CTNHChangelog.MOD_ID, bus = Mod.EventBusSubscriber.Bus.MOD, value = Dist.CLIENT)

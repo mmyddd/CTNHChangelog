@@ -11,6 +11,7 @@ import net.minecraft.client.Minecraft;
 
 import java.io.*;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -20,6 +21,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Getter
 public class ChangelogEntry {
@@ -34,35 +36,39 @@ public class ChangelogEntry {
     private final int color;
     private final List<String> tags;
 
+    // volatile 保证跨线程可见性：后台线程写入，渲染线程读取
     @Getter
-    private static String footerText = "Hello World!";
+    private static volatile String footerText = "Hello World!";
 
-    private static final Map<String, Integer> TAG_COLORS = new HashMap<>();
+    // volatile 引用保证原子替换：构建完整的新 Map 后一次性替换引用
+    private static volatile Map<String, Integer> TAG_COLORS = new ConcurrentHashMap<>();
 
-    private static List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
+    // volatile 保证跨线程可见性：后台线程赋新列表，渲染线程遍历
+    private static volatile List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
     @Getter
-    private static boolean isLoaded = false;
+    private static volatile boolean isLoaded = false;
     @Getter
-    private static boolean isLoadingComplete = false;
+    private static volatile boolean isLoadingComplete = false;
 
-    private static boolean configLoaded = false;
+    private static volatile boolean configLoaded = false;
     @Getter
-    private static String pendingRemoteUrl = null;
-    private static CompletableFuture<Void> loadFuture = null;
+    private static volatile String pendingRemoteUrl = null;
+    private static volatile CompletableFuture<Void> loadFuture = null;
 
     private static final String CACHE_DIR_NAME = ".cache";
     private static final String CACHE_FILE_NAME = "changelog_cache.json";
 
-    private static Path cacheDirectory = null;
+    private static volatile Path cacheDirectory = null;
 
     public ChangelogEntry(String version, String date, String title, List<String> changes, List<String> types, int color, List<String> tags) {
         this.version = version;
         this.date = date;
         this.title = title;
-        this.changes = changes;
-        this.types = types != null ? types : new ArrayList<>();
+        // 防御性拷贝，防止外部修改影响内部状态
+        this.changes = new ArrayList<>(changes);
+        this.types = types != null ? new ArrayList<>(types) : new ArrayList<>();
         this.color = color;
-        this.tags = tags != null ? tags : new ArrayList<>();
+        this.tags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
     }
 
     public boolean hasTag(String tag) {
@@ -77,7 +83,7 @@ public class ChangelogEntry {
         return ALL_ENTRIES;
     }
 
-    public static Path getCacheDirectory() {
+    public static synchronized Path getCacheDirectory() {
         if (cacheDirectory == null) {
             cacheDirectory = initializeCacheDirectory();
         }
@@ -96,7 +102,7 @@ public class ChangelogEntry {
                 Files.createDirectories(cacheDir);
                 CTNHChangelog.LOGGER.info("Created cache directory: {}", cacheDir.toAbsolutePath());
             } else {
-                CTNHChangelog.LOGGER.info("Cache directory already exists: {}", cacheDir.toAbsolutePath());
+                CTNHChangelog.LOGGER.debug("Cache directory already exists: {}", cacheDir.toAbsolutePath());
             }
             return cacheDir;
         } catch (Exception e) {
@@ -120,7 +126,7 @@ public class ChangelogEntry {
         loadFuture = CompletableFuture.completedFuture(null);
     }
 
-    public static void loadAfterConfig() {
+    public static synchronized void loadAfterConfig() {
         configLoaded = true;
         String remoteUrl = Config.getChangelogUrl();
 
@@ -225,7 +231,8 @@ public class ChangelogEntry {
 
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(urlStr);
+            // 使用 URI.create 替代已弃用的 new URL 构造函数
+            URL url = URI.create(urlStr).toURL();
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(CONNECTION_TIMEOUT);
@@ -278,7 +285,8 @@ public class ChangelogEntry {
     private static String fetchRemoteETag(String urlStr) throws Exception {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(urlStr);
+            // 使用 URI.create 替代已弃用的 new URL 构造函数
+            URL url = URI.create(urlStr).toURL();
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("HEAD");
             connection.setConnectTimeout(CONNECTION_TIMEOUT);
@@ -303,8 +311,7 @@ public class ChangelogEntry {
     }
 
     public static void loadFromResources() {
-        try {
-            InputStream is = ChangelogEntry.class.getResourceAsStream("/changelog.json");
+        try (InputStream is = ChangelogEntry.class.getResourceAsStream("/changelog.json")) {
             if (is != null) {
                 if (loadFromStream(is)) {
                     CTNHChangelog.LOGGER.info("Loaded {} changelog entries from resources", ALL_ENTRIES.size());
@@ -333,17 +340,19 @@ public class ChangelogEntry {
 
             if (root.has("tagColors")) {
                 JsonObject tagColorsObj = root.getAsJsonObject("tagColors");
-                TAG_COLORS.clear();
+                // 先构建完整的临时 Map，再一次性替换引用，避免渲染线程读到不完整状态
+                Map<String, Integer> newTagColors = new ConcurrentHashMap<>();
                 for (Map.Entry<String, JsonElement> entry : tagColorsObj.entrySet()) {
                     String tag = entry.getKey();
                     String colorStr = entry.getValue().getAsString();
                     int color = parseColor(colorStr);
-                    TAG_COLORS.put(tag, color);
+                    newTagColors.put(tag, color);
                     CTNHChangelog.LOGGER.debug("Loaded tag color: {} = {}", tag, colorStr);
                 }
+                TAG_COLORS = newTagColors;
             } else {
                 CTNHChangelog.LOGGER.info("No tagColors defined in JSON");
-                TAG_COLORS.clear();
+                TAG_COLORS = new ConcurrentHashMap<>();
             }
 
             JsonArray entriesArray = root.getAsJsonArray("entries");
@@ -399,7 +408,8 @@ public class ChangelogEntry {
                 entries.add(new ChangelogEntry(version, date, title, changes, types, color, tags));
             }
 
-            ALL_ENTRIES = entries;
+            // 使用不可变列表包装，保证线程安全的同时防止外部修改
+            ALL_ENTRIES = Collections.unmodifiableList(entries);
             return true;
         } catch (Exception e) {
             CTNHChangelog.LOGGER.error("Failed to parse changelog JSON", e);
@@ -416,8 +426,19 @@ public class ChangelogEntry {
                 } else if (hex.length() == 8) {
                     return (int) Long.parseLong(hex, 16);
                 }
+                // 0x 前缀但十六进制长度既非6也非8，视为无效格式
+                CTNHChangelog.LOGGER.warn("Invalid hex color length: {}, using default white", colorStr);
+                return 0xFFFFFFFF;
             } else if (colorStr.startsWith("#")) {
-                return (int) Long.parseLong("FF" + colorStr.substring(1), 16);
+                String hex = colorStr.substring(1);
+                if (hex.length() == 6) {
+                    return (int) Long.parseLong("FF" + hex, 16);
+                } else if (hex.length() == 8) {
+                    return (int) Long.parseLong(hex, 16);
+                }
+                // # 前缀但十六进制长度既非6也非8，视为无效格式
+                CTNHChangelog.LOGGER.warn("Invalid hex color length: {}, using default white", colorStr);
+                return 0xFFFFFFFF;
             } else {
                 return Integer.parseInt(colorStr);
             }
@@ -425,12 +446,10 @@ public class ChangelogEntry {
             CTNHChangelog.LOGGER.warn("Failed to parse color: {}, using default white", colorStr);
             return 0xFFFFFFFF;
         }
-        return 0;
     }
 
     private static void loadDefaultEntries() {
-        ALL_ENTRIES = new ArrayList<>();
-        TAG_COLORS.clear();
+        TAG_COLORS = new ConcurrentHashMap<>();
         footerText = "Hello World!";
 
         List<String> changes1 = new ArrayList<>();
@@ -443,8 +462,11 @@ public class ChangelogEntry {
         tags1.add("首次发布");
         tags1.add("重大更新");
 
-        ALL_ENTRIES.add(new ChangelogEntry("1.0.0", LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
+        // 先构建列表，再用不可变包装赋值，保证线程安全
+        List<ChangelogEntry> defaultEntries = new ArrayList<>();
+        defaultEntries.add(new ChangelogEntry("1.0.0", LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE),
                 "首次发布", changes1, types1, 0xFF55FF55, tags1));
+        ALL_ENTRIES = Collections.unmodifiableList(defaultEntries);
 
         CTNHChangelog.LOGGER.info("Loaded default changelog entries");
     }
