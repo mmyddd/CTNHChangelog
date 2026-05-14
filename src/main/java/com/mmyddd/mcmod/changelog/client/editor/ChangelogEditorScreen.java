@@ -281,7 +281,7 @@ public class ChangelogEditorScreen extends Screen {
                 parseAndLoadJson(json);
                 showToast(Component.translatable("ctnhchangelog.editor.imported").getString());
             } else {
-                showToast("No cache file found at .cache/changelog_cache.json");
+                showToast(Component.translatable("ctnhchangelog.editor.import_not_found").getString());
             }
         } catch (Exception e) {
             CTNHChangelog.LOGGER.error("Failed to import changelog", e);

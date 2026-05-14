@@ -29,5 +29,19 @@
   "ctnhchangelog.editor.select_entry": "选择一个条目进行编辑",
   "ctnhchangelog.editor.exported": "JSON 已导出到游戏目录",
   "ctnhchangelog.editor.imported": "JSON 导入成功",
-  "ctnhchangelog.editor.import_error": "导入失败：无效的 JSON"
+  "ctnhchangelog.editor.import_error": "导入失败：无效的 JSON",
+  "ctnhchangelog.editor.import_not_found": "未找到缓存文件 .cache/changelog_cache.json",
+  "ctnhchangelog.editor.version": "版本",
+  "ctnhchangelog.editor.date": "日期",
+  "ctnhchangelog.editor.title_field": "标题",
+  "ctnhchangelog.editor.types": "类型",
+  "ctnhchangelog.editor.color": "颜色",
+  "ctnhchangelog.editor.tags": "标签",
+  "ctnhchangelog.editor.new_change_placeholder": "新增变更",
+  "ctnhchangelog.editor.edit_change_placeholder": "编辑变更",
+  "ctnhchangelog.editor.entry_added": "已添加条目",
+  "ctnhchangelog.editor.entry_deleted": "已删除条目",
+  "ctnhchangelog.editor.tag_removed": "已移除标签：%s",
+  "ctnhchangelog.editor.change_added": "已添加变更",
+  "ctnhchangelog.editor.change_removed": "已移除变更"
 }

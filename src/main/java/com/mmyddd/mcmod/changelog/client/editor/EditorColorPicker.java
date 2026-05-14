@@ -60,7 +60,7 @@ public class EditorColorPicker {
     public void init(Font font, int x, int y) {
         int hexX = x + SQ_SIZE + HUE_BAR_W + 8;
         int hexY = y + SQ_SIZE + 8;
-        hexInput = new EditBox(font, hexX, y + SQ_SIZE + 8, 64, 16,
+        hexInput = new EditBox(font, hexX, hexY, 64, 16,
                 net.minecraft.network.chat.Component.literal("Hex"));
         hexInput.setValue(String.format("#%06X", toARGB() & 0x00FFFFFF));
         hexInput.setMaxLength(9);
@@ -140,6 +140,9 @@ public class EditorColorPicker {
     private void rebuildSquareTexture() {
         if (squareTexture != null) {
             squareTexture.close();
+            if (squareTextureLocation != null) {
+                Minecraft.getInstance().getTextureManager().release(squareTextureLocation);
+            }
         }
         NativeImage image = new NativeImage(SQ_SIZE, SQ_SIZE, false);
         for (int py = 0; py < SQ_SIZE; py++) {
@@ -256,6 +259,10 @@ public class EditorColorPicker {
         if (squareTexture != null) {
             squareTexture.close();
             squareTexture = null;
+        }
+        if (squareTextureLocation != null) {
+            Minecraft.getInstance().getTextureManager().release(squareTextureLocation);
+            squareTextureLocation = null;
         }
     }
 }

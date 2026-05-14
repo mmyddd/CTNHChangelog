@@ -29,5 +29,19 @@
   "ctnhchangelog.editor.select_entry": "Select an entry to edit",
   "ctnhchangelog.editor.exported": "JSON exported to game directory",
   "ctnhchangelog.editor.imported": "JSON imported successfully",
-  "ctnhchangelog.editor.import_error": "Import failed: invalid JSON"
+  "ctnhchangelog.editor.import_error": "Import failed: invalid JSON",
+  "ctnhchangelog.editor.import_not_found": "No cache file found at .cache/changelog_cache.json",
+  "ctnhchangelog.editor.version": "Version",
+  "ctnhchangelog.editor.date": "Date",
+  "ctnhchangelog.editor.title_field": "Title",
+  "ctnhchangelog.editor.types": "Types",
+  "ctnhchangelog.editor.color": "Color",
+  "ctnhchangelog.editor.tags": "Tags",
+  "ctnhchangelog.editor.new_change_placeholder": "New Change",
+  "ctnhchangelog.editor.edit_change_placeholder": "Edit Change",
+  "ctnhchangelog.editor.entry_added": "Entry added",
+  "ctnhchangelog.editor.entry_deleted": "Entry deleted",
+  "ctnhchangelog.editor.tag_removed": "Tag removed: %s",
+  "ctnhchangelog.editor.change_added": "Change added",
+  "ctnhchangelog.editor.change_removed": "Change removed"
 }

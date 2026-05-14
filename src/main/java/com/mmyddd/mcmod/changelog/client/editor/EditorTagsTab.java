@@ -393,6 +393,12 @@ public class EditorTagsTab {
         );
 
         colorPicker.init(editor.getScreenFont(), colorPickerX, colorPickerY);
+
+        // 注册 Hex 输入框到 Screen 以接收键盘输入
+        EditBox hexInput = colorPicker.getHexInput();
+        if (hexInput != null) {
+            editor.addWidgetToScreen(hexInput);
+        }
     }
 
     /**
@@ -400,6 +406,11 @@ public class EditorTagsTab {
      */
     private void closeColorPicker() {
         if (colorPicker != null) {
+            // 从 Screen 移除 Hex 输入框
+            EditBox hexInput = colorPicker.getHexInput();
+            if (hexInput != null) {
+                editor.removeWidgetFromScreen(hexInput);
+            }
             colorPicker.close();
             colorPicker = null;
             colorPickerTargetIndex = -1;
