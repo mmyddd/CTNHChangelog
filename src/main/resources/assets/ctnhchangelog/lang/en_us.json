@@ -30,7 +30,7 @@
   "ctnhchangelog.editor.exported": "JSON exported to game directory",
   "ctnhchangelog.editor.imported": "JSON imported successfully",
   "ctnhchangelog.editor.import_error": "Import failed: invalid JSON",
-  "ctnhchangelog.editor.import_not_found": "No cache file found at .cache/changelog_cache.json",
+  "ctnhchangelog.editor.import_not_found": "No cache file found",
   "ctnhchangelog.editor.version": "Version",
   "ctnhchangelog.editor.date": "Date",
   "ctnhchangelog.editor.title_field": "Title",

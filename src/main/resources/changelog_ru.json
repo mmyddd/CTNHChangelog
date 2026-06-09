@@ -1,0 +1,32 @@
+{
+  "footer": "Пример",
+  "entries": [
+    {
+      "version": "1.0.0",
+      "date": "2026-02-12",
+      "title": "Пример",
+      "type": ["major","minor","patch","hotfix","danger"],
+      "tags": ["Пример", "Пример"],
+      "color": "0xFFFFFF00",
+      "changes": [
+        "Пример",
+        "Пример"
+      ]
+    },
+    {
+      "version": "2.0.0",
+      "date": "2026-02-12",
+      "title": "Пример",
+      "type": ["major","minor","patch","hotfix","danger"],
+      "tags": ["Пример", "Пример"],
+      "color": "0x0000FF00",
+      "changes": [
+        "Пример",
+        "Пример"
+      ]
+    }
+  ],
+  "tagColors": {
+    "Пример": "#5555FF"
+  }
+}

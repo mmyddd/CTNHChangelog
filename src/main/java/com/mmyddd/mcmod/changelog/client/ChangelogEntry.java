@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
 import com.mmyddd.mcmod.changelog.Config;
-import lombok.Getter;
 import net.minecraft.client.Minecraft;
 
 import java.io.*;
@@ -23,7 +22,6 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
-@Getter
 public class ChangelogEntry {
     private static final int CONNECTION_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 10000;
@@ -37,7 +35,6 @@ public class ChangelogEntry {
     private final List<String> tags;
 
     // volatile 保证跨线程可见性：后台线程写入，渲染线程读取
-    @Getter
     private static volatile String footerText = "Hello World!";
 
     // volatile 引用保证原子替换：构建完整的新 Map 后一次性替换引用
@@ -45,18 +42,13 @@ public class ChangelogEntry {
 
     // volatile 保证跨线程可见性：后台线程赋新列表，渲染线程遍历
     private static volatile List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
-    @Getter
     private static volatile boolean isLoaded = false;
-    @Getter
     private static volatile boolean isLoadingComplete = false;
 
-    private static volatile boolean configLoaded = false;
-    @Getter
-    private static volatile String pendingRemoteUrl = null;
     private static volatile CompletableFuture<Void> loadFuture = null;
 
     private static final String CACHE_DIR_NAME = ".cache";
-    private static final String CACHE_FILE_NAME = "changelog_cache.json";
+    private static final String CACHE_FILE_PREFIX = "changelog_cache";
 
     private static volatile Path cacheDirectory = null;
 
@@ -71,8 +63,48 @@ public class ChangelogEntry {
         this.tags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
     }
 
+    public String getVersion() {
+        return version;
+    }
+
+    public String getDate() {
+        return date;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public List<String> getChanges() {
+        return new ArrayList<>(changes);
+    }
+
+    public List<String> getTypes() {
+        return new ArrayList<>(types);
+    }
+
+    public int getColor() {
+        return color;
+    }
+
+    public List<String> getTags() {
+        return new ArrayList<>(tags);
+    }
+
     public boolean hasTag(String tag) {
         return tags.contains(tag);
+    }
+
+    public static String getFooterText() {
+        return footerText;
+    }
+
+    public static boolean isLoaded() {
+        return isLoaded;
+    }
+
+    public static boolean isLoadingComplete() {
+        return isLoadingComplete;
     }
 
     public static int getTagColor(String tag) {
@@ -81,6 +113,10 @@ public class ChangelogEntry {
 
     public static Map<String, Integer> getTagColorsMap() {
         return new HashMap<>(TAG_COLORS);
+    }
+
+    public static String getCacheFileNameForCurrentLanguage() {
+        return getCacheFileName();
     }
 
     public static List<ChangelogEntry> getAllEntries() {
@@ -95,9 +131,9 @@ public class ChangelogEntry {
     }
 
     private static Path initializeCacheDirectory() {
-        File gameDir = Minecraft.getInstance().gameDirectory;
-
-        Path cacheDir = new File(gameDir, CACHE_DIR_NAME).toPath();
+        @SuppressWarnings("resource")
+        Minecraft minecraft = Minecraft.getInstance();
+        Path cacheDir = Path.of(minecraft.gameDirectory.getAbsolutePath(), CACHE_DIR_NAME);
 
         CTNHChangelog.LOGGER.info("Cache directory: {}", cacheDir.toAbsolutePath());
 
@@ -131,10 +167,10 @@ public class ChangelogEntry {
     }
 
     public static synchronized void loadAfterConfig() {
-        configLoaded = true;
-        String remoteUrl = Config.getChangelogUrl();
+        String remoteUrl = Config.getSelectedChangelogUrl();
 
-        CTNHChangelog.LOGGER.info("Config loaded, remote URL: {}", remoteUrl);
+        CTNHChangelog.LOGGER.info("Config loaded, selected changelog language: {}, remote URL configured: {}",
+                Config.getSelectedChangelogLanguage(), !remoteUrl.isEmpty());
 
         if (remoteUrl != null && !remoteUrl.isEmpty()) {
             if (loadFuture == null || loadFuture.isDone()) {
@@ -166,8 +202,6 @@ public class ChangelogEntry {
     public static void resetLoaded() {
         isLoaded = false;
         isLoadingComplete = false;
-        configLoaded = false;
-        pendingRemoteUrl = null;
     }
 
     private static boolean loadData(String remoteUrl) {
@@ -177,7 +211,7 @@ public class ChangelogEntry {
             if (remoteETag == null) {
                 CTNHChangelog.LOGGER.warn("Failed to fetch remote ETag, checking cache...");
 
-                Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
+                Path cacheFile = getCacheFile();
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to remote unavailable");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -190,8 +224,8 @@ public class ChangelogEntry {
 
             CTNHChangelog.LOGGER.info("Remote ETag: {}", remoteETag);
 
-            Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
-            Path etagFile = getCacheDirectory().resolve(CACHE_FILE_NAME + ".etag");
+            Path cacheFile = getCacheFile();
+            Path etagFile = getCacheETagFile();
 
             if (Files.exists(cacheFile) && Files.exists(etagFile)) {
                 byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -216,7 +250,7 @@ public class ChangelogEntry {
             CTNHChangelog.LOGGER.error("Failed to load data: {}", e.getMessage());
 
             try {
-                Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
+                Path cacheFile = getCacheFile();
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to error");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -231,7 +265,8 @@ public class ChangelogEntry {
     }
 
     private static boolean downloadFromRemote(String urlStr, String remoteETag) {
-        CTNHChangelog.LOGGER.info("Downloading from remote: {}", urlStr);
+        CTNHChangelog.LOGGER.info("Downloading remote changelog for selected language: {}",
+                Config.getSelectedChangelogLanguage());
 
         HttpURLConnection connection = null;
         try {
@@ -265,8 +300,8 @@ public class ChangelogEntry {
             boolean success = loadFromStream(new ByteArrayInputStream(data));
 
             if (success) {
-                Path cacheFile = getCacheDirectory().resolve(CACHE_FILE_NAME);
-                Path etagFile = getCacheDirectory().resolve(CACHE_FILE_NAME + ".etag");
+                Path cacheFile = getCacheFile();
+                Path etagFile = getCacheETagFile();
 
                 Files.write(cacheFile, data);
                 Files.writeString(etagFile, remoteETag);
@@ -315,22 +350,40 @@ public class ChangelogEntry {
     }
 
     public static void loadFromResources() {
-        try (InputStream is = ChangelogEntry.class.getResourceAsStream("/changelog.json")) {
-            if (is != null) {
-                if (loadFromStream(is)) {
-                    CTNHChangelog.LOGGER.info("Loaded {} changelog entries from resources", ALL_ENTRIES.size());
-                    CTNHChangelog.LOGGER.info("Loaded {} tag colors from resources", TAG_COLORS.size());
-                } else {
-                    loadDefaultEntries();
+        for (String resourcePath : Config.getLocalChangelogResourceCandidates()) {
+            try (InputStream is = ChangelogEntry.class.getResourceAsStream(resourcePath)) {
+                if (is == null) {
+                    CTNHChangelog.LOGGER.info("Could not find {} in resources", resourcePath);
+                    continue;
                 }
-            } else {
-                CTNHChangelog.LOGGER.info("Could not find changelog.json in resources, using defaults");
-                loadDefaultEntries();
+                if (loadFromStream(is)) {
+                    CTNHChangelog.LOGGER.info("Loaded {} changelog entries from resources: {}", ALL_ENTRIES.size(), resourcePath);
+                    CTNHChangelog.LOGGER.info("Loaded {} tag colors from resources", TAG_COLORS.size());
+                    return;
+                }
+                CTNHChangelog.LOGGER.warn("Failed to parse resource changelog: {}", resourcePath);
+            } catch (Exception e) {
+                CTNHChangelog.LOGGER.error("Failed to load changelog from resources: {}", resourcePath, e);
             }
-        } catch (Exception e) {
-            CTNHChangelog.LOGGER.error("Failed to load changelog from resources", e);
-            loadDefaultEntries();
         }
+        CTNHChangelog.LOGGER.info("Could not load any resource changelog, using defaults");
+        loadDefaultEntries();
+    }
+
+    private static Path getCacheFile() {
+        return getCacheDirectory().resolve(getCacheFileName());
+    }
+
+    private static Path getCacheETagFile() {
+        return getCacheDirectory().resolve(getCacheFileName() + ".etag");
+    }
+
+    private static String getCacheFileName() {
+        String selectedLanguage = Config.getSelectedChangelogLanguage();
+        if (selectedLanguage.equals("ru") || selectedLanguage.equals("en")) {
+            return CACHE_FILE_PREFIX + "_" + selectedLanguage + ".json";
+        }
+        return CACHE_FILE_PREFIX + ".json";
     }
 
     private static boolean loadFromStream(InputStream is) {

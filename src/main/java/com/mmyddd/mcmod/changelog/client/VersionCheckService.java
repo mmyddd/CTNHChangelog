@@ -35,8 +35,8 @@ public class VersionCheckService {
             return;
         }
 
-        if (Config.getModpackVersion().isEmpty() || Config.getChangelogUrl().isEmpty()) {
-            CTNHChangelog.LOGGER.info("ModpackVersion or changelogUrl not configured, skipping version check");
+        if (Config.getModpackVersion().isEmpty() || Config.getSelectedChangelogUrl().isEmpty()) {
+            CTNHChangelog.LOGGER.info("ModpackVersion or selected changelog URL not configured, skipping version check");
             checkDone = true;
             return;
         }
@@ -61,7 +61,7 @@ public class VersionCheckService {
     }
 
     private static String fetchChangelogVersion() throws Exception {
-        String urlStr = Config.getChangelogUrl();
+        String urlStr = Config.getSelectedChangelogUrl();
         if (urlStr.isEmpty()) {
             return null;
         }

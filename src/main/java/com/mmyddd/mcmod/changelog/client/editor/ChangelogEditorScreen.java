@@ -8,7 +8,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.util.Mth;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -21,7 +20,6 @@ public class ChangelogEditorScreen extends Screen {
     private static final int TAB_WIDTH = 100;
     private static final int TAB_GAP = 4;
     private static final int MARGIN = 10;
-    private static final int CONTENT_Y = 35;
 
     private final Screen parentScreen;
     private int currentTab;
@@ -258,7 +256,7 @@ public class ChangelogEditorScreen extends Screen {
 
     private void exportJson() {
         try {
-            Path outputDir = Minecraft.getInstance().gameDirectory.toPath().resolve("changelog_opt");
+            Path outputDir = getGameDirectory().resolve("changelog_opt");
             if (!Files.exists(outputDir)) {
                 Files.createDirectories(outputDir);
             }
@@ -274,19 +272,26 @@ public class ChangelogEditorScreen extends Screen {
 
     private void importJson() {
         try {
-            Path cacheDir = Minecraft.getInstance().gameDirectory.toPath().resolve(".cache");
-            Path input = cacheDir.resolve("changelog_cache.json");
+            Path cacheDir = getGameDirectory().resolve(".cache");
+            Path input = cacheDir.resolve(ChangelogEntry.getCacheFileNameForCurrentLanguage());
             if (Files.exists(input)) {
                 String json = Files.readString(input, StandardCharsets.UTF_8);
                 parseAndLoadJson(json);
                 showToast(Component.translatable("ctnhchangelog.editor.imported").getString());
             } else {
-                showToast(Component.translatable("ctnhchangelog.editor.import_not_found").getString());
+                showToast(Component.translatable("ctnhchangelog.editor.import_not_found").getString()
+                        + ": .cache/" + input.getFileName());
             }
         } catch (Exception e) {
             CTNHChangelog.LOGGER.error("Failed to import changelog", e);
             showToast(Component.translatable("ctnhchangelog.editor.import_error").getString());
         }
+    }
+
+    private Path getGameDirectory() {
+        @SuppressWarnings("resource")
+        Minecraft minecraft = Minecraft.getInstance();
+        return Path.of(minecraft.gameDirectory.getAbsolutePath());
     }
 
     private void parseAndLoadJson(String json) {

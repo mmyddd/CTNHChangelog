@@ -10,11 +10,15 @@ The configuration file is located at `config/ctnhchangelog-client.toml`.
 
 | Field | Description |
 |-------|-------------|
-| `changelogUrl` | URL of the remote JSON changelog file (e.g., `https://example.com/changelog.json`). |
+| `changelogUrl` | Default remote JSON changelog URL. Used by non-English/non-Russian languages and as the last fallback. |
+| `changelogUrlEn` | English remote JSON changelog URL. English clients use this first. Other languages fall back to this when their matching URL is empty. |
+| `changelogUrlRu` | Russian remote JSON changelog URL. Russian clients use this first; if empty, they fall back to `changelogUrlEn`. |
 | `enableChangelogTab` | If `true`, displays the changelog tab in the "Create New World" menu. |
 | `ModpackVersion` | Current modpack version. Used to compare with the remote version for update checks. |
 | `enableVersionCheck` | If `true`, compares `ModpackVersion` with the latest version in the remote file.|
 | `buttonLocation` | Button display location. Options: `BOTH` (show on both Title Screen and Select World Screen), `TITLE_SCREEN` (only Title Screen), `SELECT_WORLD` (only Select World Screen). |
+
+Language selection follows the in-game language code. `en_*` uses `changelogUrlEn`, `ru_*` uses `changelogUrlRu`, and other languages use `changelogUrl`. Empty matching URLs fall back to `changelogUrlEn`, then `changelogUrl`.
 
 ### 中文
 
@@ -22,11 +26,15 @@ The configuration file is located at `config/ctnhchangelog-client.toml`.
 
 | 字段 | 说明 |
 |------|------|
-| `changelogUrl` | 远程 JSON 更新日志文件的 URL（例如：`https://example.com/changelog.json`）。 |
+| `changelogUrl` | 默认远程 JSON 更新日志文件 URL。非英文/俄文语言使用此项，也作为最后兜底。 |
+| `changelogUrlEn` | 英文远程 JSON 更新日志文件 URL。英文客户端优先使用此项，其他语言对应 URL 为空时回退到此项。 |
+| `changelogUrlRu` | 俄语远程 JSON 更新日志文件 URL。俄语客户端优先使用此项；为空时回退到 `changelogUrlEn`。 |
 | `enableChangelogTab` | 设为 `true` 时，在"创建新的世界"菜单中显示更新日志标签页。 |
 | `ModpackVersion` | 当前整合包版本号。用于与远程最新版本对比，检测更新。 |
 | `enableVersionCheck` | 设为 `true` 时，会自动对比本地与远程版本。|
 | `buttonLocation` | 按钮显示位置。可选值：`BOTH`（标题界面和选择世界界面都显示）、`TITLE_SCREEN`（仅标题界面）、`SELECT_WORLD`（仅选择世界界面）。 |
+
+语言选择跟随游戏内语言代码：`en_*` 使用 `changelogUrlEn`，`ru_*` 使用 `changelogUrlRu`，其他语言使用 `changelogUrl`。对应语言 URL 为空时，会回退到 `changelogUrlEn`，再回退到 `changelogUrl`。
 
 ---
 
