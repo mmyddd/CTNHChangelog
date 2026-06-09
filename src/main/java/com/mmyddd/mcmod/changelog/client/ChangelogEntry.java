@@ -54,6 +54,7 @@ public class ChangelogEntry {
     private static volatile List<ChangelogEntry> ALL_ENTRIES = new ArrayList<>();
     private static volatile boolean isLoaded = false;
     private static volatile boolean isLoadingComplete = false;
+    private static volatile String loadedLanguage = "";
 
     private static volatile CompletableFuture<Void> loadFuture = null;
 
@@ -207,28 +208,32 @@ public class ChangelogEntry {
 
     private static void startLoadAfterConfig() {
         String remoteUrl = Config.getSelectedChangelogUrl();
+        String selectedLanguage = Config.getSelectedChangelogLanguage();
 
         CTNHChangelog.LOGGER.info("Config loaded, selected changelog language: {}, remote URL configured: {}",
-                Config.getSelectedChangelogLanguage(), !remoteUrl.isEmpty());
+                selectedLanguage, !remoteUrl.isEmpty());
 
         if (remoteUrl != null && !remoteUrl.isEmpty()) {
             loadFuture = CompletableFuture.runAsync(() -> {
-                LoadSource loadSource = loadData(remoteUrl);
+                LoadSource loadSource = loadData(remoteUrl, selectedLanguage);
                 if (loadSource != LoadSource.UNAVAILABLE) {
                     isLoaded = true;
+                    loadedLanguage = selectedLanguage;
                     CTNHChangelog.LOGGER.info("Successfully loaded changelog from {}", loadSource.name().toLowerCase(Locale.ROOT));
                 } else {
                     CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
-                    loadFromResources();
+                    loadFromResources(selectedLanguage);
                     isLoaded = true;
+                    loadedLanguage = selectedLanguage;
                 }
                 isLoadingComplete = true;
             });
         } else {
             CTNHChangelog.LOGGER.info("No remote URL configured, using local resources");
             loadFuture = CompletableFuture.runAsync(() -> {
-                loadFromResources();
+                loadFromResources(selectedLanguage);
                 isLoaded = true;
+                loadedLanguage = selectedLanguage;
                 isLoadingComplete = true;
             });
         }
@@ -250,17 +255,20 @@ public class ChangelogEntry {
     }
 
     private static boolean hasFreshLoadedData() {
-        return isLoaded && isLoadingComplete && isCacheFresh();
+        return isLoaded && isLoadingComplete
+                && loadedLanguage.equals(Config.getSelectedChangelogLanguage())
+                && isCacheFresh();
     }
 
     public static void resetLoaded() {
         isLoaded = false;
         isLoadingComplete = false;
+        loadedLanguage = "";
     }
 
-    private static LoadSource loadData(String remoteUrl) {
+    private static LoadSource loadData(String remoteUrl, String language) {
         try {
-            if (loadFromCacheWhenFresh()) {
+            if (loadFromCacheWhenFresh(language)) {
                 return LoadSource.CACHE;
             }
 
@@ -269,7 +277,7 @@ public class ChangelogEntry {
             if (remoteETag == null) {
                 CTNHChangelog.LOGGER.warn("Failed to fetch remote ETag, checking cache...");
 
-                Path cacheFile = getCacheFile();
+                Path cacheFile = getCacheFile(language);
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to remote unavailable");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -282,13 +290,13 @@ public class ChangelogEntry {
 
             if (remoteETag.isEmpty()) {
                 CTNHChangelog.LOGGER.info("Remote changelog has no ETag, refreshing cache with GET");
-                return downloadFromRemote(remoteUrl, null) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
+                return downloadFromRemote(remoteUrl, null, language) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
             }
 
             CTNHChangelog.LOGGER.info("Remote ETag: {}", remoteETag);
 
-            Path cacheFile = getCacheFile();
-            Path etagFile = getCacheETagFile();
+            Path cacheFile = getCacheFile(language);
+            Path etagFile = getCacheETagFile(language);
 
             if (Files.exists(cacheFile) && Files.exists(etagFile)) {
                 byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -311,13 +319,13 @@ public class ChangelogEntry {
             }
 
             CTNHChangelog.LOGGER.info("Downloading from remote");
-            return downloadFromRemote(remoteUrl, remoteETag) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
+            return downloadFromRemote(remoteUrl, remoteETag, language) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
 
         } catch (Exception e) {
             CTNHChangelog.LOGGER.error("Failed to load data: {}", e.getMessage());
 
             try {
-                Path cacheFile = getCacheFile();
+                Path cacheFile = getCacheFile(language);
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to error");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -331,9 +339,9 @@ public class ChangelogEntry {
         }
     }
 
-    private static boolean downloadFromRemote(String urlStr, String remoteETag) {
+    private static boolean downloadFromRemote(String urlStr, String remoteETag, String language) {
         CTNHChangelog.LOGGER.info("Downloading remote changelog for selected language: {}",
-                Config.getSelectedChangelogLanguage());
+                language);
 
         HttpURLConnection connection = null;
         try {
@@ -367,8 +375,8 @@ public class ChangelogEntry {
             boolean success = loadFromStream(new ByteArrayInputStream(data));
 
             if (success) {
-                Path cacheFile = getCacheFile();
-                Path etagFile = getCacheETagFile();
+                Path cacheFile = getCacheFile(language);
+                Path etagFile = getCacheETagFile(language);
 
                 Files.write(cacheFile, data);
                 if (remoteETag != null && !remoteETag.isEmpty()) {
@@ -421,7 +429,11 @@ public class ChangelogEntry {
     }
 
     public static void loadFromResources() {
-        for (String resourcePath : Config.getLocalChangelogResourceCandidates()) {
+        loadFromResources(Config.getSelectedChangelogLanguage());
+    }
+
+    private static void loadFromResources(String language) {
+        for (String resourcePath : getLocalChangelogResourceCandidates(language)) {
             try (InputStream is = ChangelogEntry.class.getResourceAsStream(resourcePath)) {
                 if (is == null) {
                     CTNHChangelog.LOGGER.info("Could not find {} in resources", resourcePath);
@@ -441,17 +453,17 @@ public class ChangelogEntry {
         loadDefaultEntries();
     }
 
-    private static Path getCacheFile() {
-        return getCacheDirectory().resolve(getCacheFileName());
+    private static Path getCacheFile(String language) {
+        return getCacheDirectory().resolve(getCacheFileName(language));
     }
 
-    private static Path getCacheETagFile() {
-        return getCacheDirectory().resolve(getCacheFileName() + ".etag");
+    private static Path getCacheETagFile(String language) {
+        return getCacheDirectory().resolve(getCacheFileName(language) + ".etag");
     }
 
-    private static boolean loadFromCacheWhenFresh() {
-        Path cacheFile = getCacheFile();
-        if (isCacheFresh()) {
+    private static boolean loadFromCacheWhenFresh(String language) {
+        Path cacheFile = getCacheFile(language);
+        if (isCacheFresh(language)) {
             try {
                 CTNHChangelog.LOGGER.info("Using fresh changelog cache");
                 byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -473,12 +485,16 @@ public class ChangelogEntry {
     }
 
     private static boolean isCacheFresh() {
+        return isCacheFresh(Config.getSelectedChangelogLanguage());
+    }
+
+    private static boolean isCacheFresh(String language) {
         int ttlMinutes = Config.getCacheTtlMinutes();
         if (ttlMinutes <= 0) {
             return false;
         }
 
-        Path cacheFile = getCacheFile();
+        Path cacheFile = getCacheFile(language);
         if (!Files.exists(cacheFile)) {
             return false;
         }
@@ -500,11 +516,24 @@ public class ChangelogEntry {
     }
 
     private static String getCacheFileName() {
-        String selectedLanguage = Config.getSelectedChangelogLanguage();
-        if (selectedLanguage.equals("ru") || selectedLanguage.equals("en")) {
-            return CACHE_FILE_PREFIX + "_" + selectedLanguage + ".json";
+        return getCacheFileName(Config.getSelectedChangelogLanguage());
+    }
+
+    private static String getCacheFileName(String language) {
+        if (language.equals("ru") || language.equals("en")) {
+            return CACHE_FILE_PREFIX + "_" + language + ".json";
         }
         return CACHE_FILE_PREFIX + ".json";
+    }
+
+    private static String[] getLocalChangelogResourceCandidates(String language) {
+        if (language.equals("ru")) {
+            return new String[]{"/changelog_ru.json", "/changelog_en.json", "/changelog.json"};
+        }
+        if (language.equals("en")) {
+            return new String[]{"/changelog_en.json", "/changelog.json"};
+        }
+        return new String[]{"/changelog.json", "/changelog_en.json"};
     }
 
     private static boolean loadFromStream(InputStream is) {
