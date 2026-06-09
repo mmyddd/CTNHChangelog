@@ -31,6 +31,7 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue ENABLE_VERSION_CHECK;
     private static final ForgeConfigSpec.BooleanValue ENABLE_EDITOR;
     private static final ForgeConfigSpec.EnumValue<ButtonLocation> BUTTON_LOCATION;
+    private static final ForgeConfigSpec.IntValue CACHE_TTL_MINUTES;
 
     static final ForgeConfigSpec SPEC;
 
@@ -42,6 +43,7 @@ public class Config {
     private static boolean enableVersionCheck = true; // 默认启用
     private static boolean enableEditor = false; // 默认关闭
     private static ButtonLocation buttonLocation = ButtonLocation.BOTH;
+    private static int cacheTtlMinutes = 60;
 
     static {
         CHANGELOG_URL = BUILDER
@@ -76,6 +78,10 @@ public class Config {
                 .comment("按钮显示位置", "BOTH - 在标题界面和选择世界界面都显示", "TITLE_SCREEN - 仅在标题界面显示", "SELECT_WORLD - 仅在选择世界界面显示")
                 .defineEnum("buttonLocation", ButtonLocation.BOTH);
 
+        CACHE_TTL_MINUTES = BUILDER
+                .comment("远程更新日志缓存有效期（分钟）", "缓存未过期时直接使用本地缓存，不访问远端", "设为 0 可每次都检查远端")
+                .defineInRange("cacheTtlMinutes", 60, 0, 10080);
+
         SPEC = BUILDER.build();
     }
 
@@ -109,6 +115,10 @@ public class Config {
 
     public static ButtonLocation getButtonLocation() {
         return buttonLocation;
+    }
+
+    public static int getCacheTtlMinutes() {
+        return cacheTtlMinutes;
     }
 
     public static boolean showButtonOnTitleScreen() {
@@ -186,11 +196,12 @@ public class Config {
             enableVersionCheck = ENABLE_VERSION_CHECK.get();
             enableEditor = ENABLE_EDITOR.get();
             buttonLocation = BUTTON_LOCATION.get();
+            cacheTtlMinutes = CACHE_TTL_MINUTES.get();
 
-            CTNHChangelog.LOGGER.info("Config loaded - changelogUrlConfigured: {}, changelogUrlEnConfigured: {}, changelogUrlRuConfigured: {}, selectedChangelogLanguage: {}, selectedChangelogUrlConfigured: {}, modpackVersion: {}, enableChangelogTab: {}, enableVersionCheck: {}, enableEditor: {}, buttonLocation: {}",
-                    !changelogUrl.isEmpty(), !changelogUrlEn.isEmpty(), !changelogUrlRu.isEmpty(), getSelectedChangelogLanguage(), !getSelectedChangelogUrl().isEmpty(), modpackVersion, enableChangelogTab, enableVersionCheck, enableEditor, buttonLocation);
+            CTNHChangelog.LOGGER.info("Config loaded - changelogUrlConfigured: {}, changelogUrlEnConfigured: {}, changelogUrlRuConfigured: {}, selectedChangelogLanguage: {}, selectedChangelogUrlConfigured: {}, modpackVersion: {}, enableChangelogTab: {}, enableVersionCheck: {}, enableEditor: {}, buttonLocation: {}, cacheTtlMinutes: {}",
+                    !changelogUrl.isEmpty(), !changelogUrlEn.isEmpty(), !changelogUrlRu.isEmpty(), getSelectedChangelogLanguage(), !getSelectedChangelogUrl().isEmpty(), modpackVersion, enableChangelogTab, enableVersionCheck, enableEditor, buttonLocation, cacheTtlMinutes);
 
-            ChangelogEntry.loadAfterConfig();
+            ChangelogEntry.reloadAfterConfig();
         }
     }
 }

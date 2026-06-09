@@ -17,6 +17,7 @@ The configuration file is located at `config/ctnhchangelog-client.toml`.
 | `ModpackVersion` | Current modpack version. Used to compare with the remote version for update checks. |
 | `enableVersionCheck` | If `true`, compares `ModpackVersion` with the latest version in the remote file.|
 | `buttonLocation` | Button display location. Options: `BOTH` (show on both Title Screen and Select World Screen), `TITLE_SCREEN` (only Title Screen), `SELECT_WORLD` (only Select World Screen). |
+| `cacheTtlMinutes` | Remote changelog cache lifetime in minutes. While the cache is fresh, the mod uses the local cache without contacting the remote server. Set to `0` to check the remote file every time. |
 
 Language selection follows the in-game language code. `en_*` uses `changelogUrlEn`, `ru_*` uses `changelogUrlRu`, and other languages use `changelogUrl`. Empty matching URLs fall back to `changelogUrlEn`, then `changelogUrl`.
 
@@ -33,6 +34,7 @@ Language selection follows the in-game language code. `en_*` uses `changelogUrlE
 | `ModpackVersion` | 当前整合包版本号。用于与远程最新版本对比，检测更新。 |
 | `enableVersionCheck` | 设为 `true` 时，会自动对比本地与远程版本。|
 | `buttonLocation` | 按钮显示位置。可选值：`BOTH`（标题界面和选择世界界面都显示）、`TITLE_SCREEN`（仅标题界面）、`SELECT_WORLD`（仅选择世界界面）。 |
+| `cacheTtlMinutes` | 远程更新日志缓存有效期（分钟）。缓存未过期时直接使用本地缓存，不访问远端；设为 `0` 时每次都检查远端文件。 |
 
 语言选择跟随游戏内语言代码：`en_*` 使用 `changelogUrlEn`，`ru_*` 使用 `changelogUrlRu`，其他语言使用 `changelogUrl`。对应语言 URL 为空时，会回退到 `changelogUrlEn`，再回退到 `changelogUrl`。
 

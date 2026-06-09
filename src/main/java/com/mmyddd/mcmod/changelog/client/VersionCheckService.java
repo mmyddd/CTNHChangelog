@@ -1,98 +1,67 @@
 package com.mmyddd.mcmod.changelog.client;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
 import com.mmyddd.mcmod.changelog.Config;
 import lombok.Getter;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.api.distmarker.OnlyIn;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URI;
-import java.net.URL;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 @OnlyIn(Dist.CLIENT)
 public class VersionCheckService {
-    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
-
     // volatile 保证多线程间的可见性：EXECUTOR 线程写入，UI 线程读取
     private static volatile boolean hasUpdate = false;
     @Getter
     private static volatile boolean checkDone = false;
     @Getter
     private static volatile String latestChangelogVersion = "";
+    private static volatile CompletableFuture<Void> checkFuture = null;
 
-    public static void checkForUpdate() {
+    public static synchronized void checkForUpdate() {
         if (!Config.isEnableVersionCheck()) {
             CTNHChangelog.LOGGER.info("Version check is disabled in config");
-            checkDone = true;
+            clearResult();
             return;
         }
 
         if (Config.getModpackVersion().isEmpty() || Config.getSelectedChangelogUrl().isEmpty()) {
             CTNHChangelog.LOGGER.info("ModpackVersion or selected changelog URL not configured, skipping version check");
-            checkDone = true;
+            clearResult();
             return;
         }
 
-        CompletableFuture.supplyAsync(() -> {
+        if (checkFuture != null && !checkFuture.isDone()) {
+            CTNHChangelog.LOGGER.debug("Version check already running, reusing current check");
+            return;
+        }
+
+        checkDone = false;
+        checkFuture = ChangelogEntry.getLoadFuture().thenRun(() -> {
             try {
-                String changelogVersion = fetchChangelogVersion();
+                String changelogVersion = getLoadedChangelogVersion();
                 latestChangelogVersion = changelogVersion != null ? changelogVersion : "";
 
                 String currentVersion = Config.getModpackVersion();
-                return changelogVersion != null && !changelogVersion.equals(currentVersion);
+                hasUpdate = changelogVersion != null && !changelogVersion.equals(currentVersion);
             } catch (Exception e) {
                 CTNHChangelog.LOGGER.error("Failed to check for update", e);
-                return false;
+                hasUpdate = false;
+                latestChangelogVersion = "";
+            } finally {
+                checkDone = true;
+                CTNHChangelog.LOGGER.info("Update check completed: hasUpdate = {}, currentVersion = {}, latestVersion = {}",
+                        hasUpdate, Config.getModpackVersion(), latestChangelogVersion);
             }
-        }, EXECUTOR).thenAccept(result -> {
-            hasUpdate = result;
-            checkDone = true;
-            CTNHChangelog.LOGGER.info("Update check completed: hasUpdate = {}, currentVersion = {}, latestVersion = {}",
-                    result, Config.getModpackVersion(), latestChangelogVersion);
         });
     }
 
-    private static String fetchChangelogVersion() throws Exception {
-        String urlStr = Config.getSelectedChangelogUrl();
-        if (urlStr.isEmpty()) {
+    private static String getLoadedChangelogVersion() {
+        if (ChangelogEntry.getAllEntries().isEmpty()) {
+            CTNHChangelog.LOGGER.warn("No loaded changelog entries available for version check");
             return null;
         }
-
-        // 使用 URI.create().toURL() 替代已弃用的 new URL() 构造函数
-        URL url = URI.create(urlStr).toURL();
-        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-        try {
-            conn.setConnectTimeout(5000);
-            conn.setReadTimeout(5000);
-            conn.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
-
-            int responseCode = conn.getResponseCode();
-            if (responseCode != 200) {
-                CTNHChangelog.LOGGER.warn("Failed to fetch changelog.json, response code: {}", responseCode);
-                return null;
-            }
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()))) {
-                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-                if (root.has("entries") && !root.getAsJsonArray("entries").isEmpty()) {
-                    return root.getAsJsonArray("entries").get(0).getAsJsonObject().get("version").getAsString();
-                }
-            }
-
-            CTNHChangelog.LOGGER.warn("No entries found in changelog.json");
-            return null;
-        } finally {
-            // 确保 HttpURLConnection 在所有路径上都被关闭，防止连接泄漏
-            conn.disconnect();
-        }
+        return ChangelogEntry.getAllEntries().get(0).getVersion();
     }
 
     public static boolean hasUpdate() {
@@ -104,12 +73,16 @@ public class VersionCheckService {
 
     // 关闭线程池，防止应用退出时线程泄漏
     public static void shutdown() {
-        EXECUTOR.shutdown();
     }
 
-    public static void reset() {
+    public static synchronized void reset() {
+        clearResult();
+        checkFuture = null;
+    }
+
+    private static void clearResult() {
         hasUpdate = false;
-        checkDone = false;
+        checkDone = true;
         latestChangelogVersion = "";
     }
 }

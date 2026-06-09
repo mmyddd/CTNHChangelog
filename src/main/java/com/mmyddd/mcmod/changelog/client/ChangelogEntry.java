@@ -6,7 +6,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
 import com.mmyddd.mcmod.changelog.Config;
-import net.minecraft.client.Minecraft;
+import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.io.*;
 import java.net.HttpURLConnection;
@@ -16,6 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -25,6 +28,13 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChangelogEntry {
     private static final int CONNECTION_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 10000;
+    private static final String NO_REMOTE_ETAG = "";
+
+    private enum LoadSource {
+        REMOTE,
+        CACHE,
+        UNAVAILABLE
+    }
 
     private final String version;
     private final String date;
@@ -123,6 +133,13 @@ public class ChangelogEntry {
         return ALL_ENTRIES;
     }
 
+    public static synchronized CompletableFuture<Void> getLoadFuture() {
+        if (loadFuture == null) {
+            return CompletableFuture.completedFuture(null);
+        }
+        return loadFuture;
+    }
+
     public static synchronized Path getCacheDirectory() {
         if (cacheDirectory == null) {
             cacheDirectory = initializeCacheDirectory();
@@ -131,9 +148,7 @@ public class ChangelogEntry {
     }
 
     private static Path initializeCacheDirectory() {
-        @SuppressWarnings("resource")
-        Minecraft minecraft = Minecraft.getInstance();
-        Path cacheDir = Path.of(minecraft.gameDirectory.getAbsolutePath(), CACHE_DIR_NAME);
+        Path cacheDir = FMLPaths.GAMEDIR.get().resolve(CACHE_DIR_NAME);
 
         CTNHChangelog.LOGGER.info("Cache directory: {}", cacheDir.toAbsolutePath());
 
@@ -167,36 +182,75 @@ public class ChangelogEntry {
     }
 
     public static synchronized void loadAfterConfig() {
+        if (loadFuture != null && !loadFuture.isDone()) {
+            CTNHChangelog.LOGGER.debug("Changelog load already running, reusing current load");
+            return;
+        }
+
+        if (hasFreshLoadedData()) {
+            CTNHChangelog.LOGGER.info("Changelog data already loaded and cache is fresh, reusing in-memory data");
+            return;
+        }
+
+        startLoadAfterConfig();
+    }
+
+    public static synchronized void reloadAfterConfig() {
+        if (loadFuture != null && !loadFuture.isDone()) {
+            CTNHChangelog.LOGGER.debug("Changelog load already running, reusing current load");
+            return;
+        }
+
+        resetLoaded();
+        startLoadAfterConfig();
+    }
+
+    private static void startLoadAfterConfig() {
         String remoteUrl = Config.getSelectedChangelogUrl();
 
         CTNHChangelog.LOGGER.info("Config loaded, selected changelog language: {}, remote URL configured: {}",
                 Config.getSelectedChangelogLanguage(), !remoteUrl.isEmpty());
 
         if (remoteUrl != null && !remoteUrl.isEmpty()) {
-            if (loadFuture == null || loadFuture.isDone()) {
-                loadFuture = CompletableFuture.runAsync(() -> {
-                    boolean success = loadData(remoteUrl);
-                    if (success) {
-                        isLoaded = true;
-                        CTNHChangelog.LOGGER.info("Successfully loaded changelog from remote");
-                    } else {
-                        CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
-                        loadFromResources();
-                        isLoaded = true;
-                    }
-                    isLoadingComplete = true;
-                });
-            }
-        } else {
-            CTNHChangelog.LOGGER.info("No remote URL configured, using local resources");
-            if (loadFuture == null || loadFuture.isDone()) {
-                loadFuture = CompletableFuture.runAsync(() -> {
+            loadFuture = CompletableFuture.runAsync(() -> {
+                LoadSource loadSource = loadData(remoteUrl);
+                if (loadSource != LoadSource.UNAVAILABLE) {
+                    isLoaded = true;
+                    CTNHChangelog.LOGGER.info("Successfully loaded changelog from {}", loadSource.name().toLowerCase(Locale.ROOT));
+                } else {
+                    CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
                     loadFromResources();
                     isLoaded = true;
-                    isLoadingComplete = true;
-                });
-            }
+                }
+                isLoadingComplete = true;
+            });
+        } else {
+            CTNHChangelog.LOGGER.info("No remote URL configured, using local resources");
+            loadFuture = CompletableFuture.runAsync(() -> {
+                loadFromResources();
+                isLoaded = true;
+                isLoadingComplete = true;
+            });
         }
+    }
+
+    public static synchronized void ensureLoadedForCurrentConfig() {
+        if (loadFuture != null && !loadFuture.isDone()) {
+            CTNHChangelog.LOGGER.debug("Changelog load already running, reusing current load");
+            return;
+        }
+
+        if (hasFreshLoadedData()) {
+            CTNHChangelog.LOGGER.info("Changelog data already loaded and cache is fresh, reusing in-memory data");
+            return;
+        }
+
+        resetLoaded();
+        loadAfterConfig();
+    }
+
+    private static boolean hasFreshLoadedData() {
+        return isLoaded && isLoadingComplete && isCacheFresh();
     }
 
     public static void resetLoaded() {
@@ -204,8 +258,12 @@ public class ChangelogEntry {
         isLoadingComplete = false;
     }
 
-    private static boolean loadData(String remoteUrl) {
+    private static LoadSource loadData(String remoteUrl) {
         try {
+            if (loadFromCacheWhenFresh()) {
+                return LoadSource.CACHE;
+            }
+
             String remoteETag = fetchRemoteETag(remoteUrl);
 
             if (remoteETag == null) {
@@ -215,11 +273,16 @@ public class ChangelogEntry {
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to remote unavailable");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
-                    return loadFromStream(new ByteArrayInputStream(cachedData));
+                    return loadFromStream(new ByteArrayInputStream(cachedData)) ? LoadSource.CACHE : LoadSource.UNAVAILABLE;
                 } else {
                     CTNHChangelog.LOGGER.warn("No cache available, falling back to local resources");
-                    return false;
+                    return LoadSource.UNAVAILABLE;
                 }
+            }
+
+            if (remoteETag.isEmpty()) {
+                CTNHChangelog.LOGGER.info("Remote changelog has no ETag, refreshing cache with GET");
+                return downloadFromRemote(remoteUrl, null) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
             }
 
             CTNHChangelog.LOGGER.info("Remote ETag: {}", remoteETag);
@@ -235,7 +298,11 @@ public class ChangelogEntry {
 
                 if (remoteETag.equals(cachedETag)) {
                     CTNHChangelog.LOGGER.info("Cache is valid, using cached data");
-                    return loadFromStream(new ByteArrayInputStream(cachedData));
+                    boolean success = loadFromStream(new ByteArrayInputStream(cachedData));
+                    if (success) {
+                        refreshCacheTimestamp(cacheFile);
+                    }
+                    return success ? LoadSource.CACHE : LoadSource.UNAVAILABLE;
                 } else {
                     CTNHChangelog.LOGGER.info("Cache ETag mismatch, need to refresh");
                 }
@@ -244,7 +311,7 @@ public class ChangelogEntry {
             }
 
             CTNHChangelog.LOGGER.info("Downloading from remote");
-            return downloadFromRemote(remoteUrl, remoteETag);
+            return downloadFromRemote(remoteUrl, remoteETag) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
 
         } catch (Exception e) {
             CTNHChangelog.LOGGER.error("Failed to load data: {}", e.getMessage());
@@ -254,13 +321,13 @@ public class ChangelogEntry {
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to error");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
-                    return loadFromStream(new ByteArrayInputStream(cachedData));
+                    return loadFromStream(new ByteArrayInputStream(cachedData)) ? LoadSource.CACHE : LoadSource.UNAVAILABLE;
                 }
             } catch (Exception ex) {
                 CTNHChangelog.LOGGER.error("Failed to load cache on error recovery: {}", ex.getMessage());
             }
 
-            return false;
+            return LoadSource.UNAVAILABLE;
         }
     }
 
@@ -304,7 +371,11 @@ public class ChangelogEntry {
                 Path etagFile = getCacheETagFile();
 
                 Files.write(cacheFile, data);
-                Files.writeString(etagFile, remoteETag);
+                if (remoteETag != null && !remoteETag.isEmpty()) {
+                    Files.writeString(etagFile, remoteETag);
+                } else {
+                    Files.deleteIfExists(etagFile);
+                }
 
                 CTNHChangelog.LOGGER.info("Successfully downloaded and cached changelog with ETag: {}", remoteETag);
             }
@@ -341,7 +412,7 @@ public class ChangelogEntry {
             if (etag != null) {
                 return etag.replace("\"", "").replace("W/", "").trim();
             }
-            return null;
+            return NO_REMOTE_ETAG;
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -376,6 +447,56 @@ public class ChangelogEntry {
 
     private static Path getCacheETagFile() {
         return getCacheDirectory().resolve(getCacheFileName() + ".etag");
+    }
+
+    private static boolean loadFromCacheWhenFresh() {
+        Path cacheFile = getCacheFile();
+        if (isCacheFresh()) {
+            try {
+                CTNHChangelog.LOGGER.info("Using fresh changelog cache");
+                byte[] cachedData = Files.readAllBytes(cacheFile);
+                return loadFromStream(new ByteArrayInputStream(cachedData));
+            } catch (Exception e) {
+                CTNHChangelog.LOGGER.warn("Failed to load fresh cache, checking remote instead: {}", e.getMessage());
+                return false;
+            }
+        }
+        return false;
+    }
+
+    private static void refreshCacheTimestamp(Path cacheFile) {
+        try {
+            Files.setLastModifiedTime(cacheFile, FileTime.from(Instant.now()));
+        } catch (Exception e) {
+            CTNHChangelog.LOGGER.warn("Failed to refresh changelog cache timestamp: {}", e.getMessage());
+        }
+    }
+
+    private static boolean isCacheFresh() {
+        int ttlMinutes = Config.getCacheTtlMinutes();
+        if (ttlMinutes <= 0) {
+            return false;
+        }
+
+        Path cacheFile = getCacheFile();
+        if (!Files.exists(cacheFile)) {
+            return false;
+        }
+
+        try {
+            Instant lastModified = Files.getLastModifiedTime(cacheFile).toInstant();
+            Duration cacheAge = Duration.between(lastModified, Instant.now());
+            if (cacheAge.compareTo(Duration.ofMinutes(ttlMinutes)) > 0) {
+                CTNHChangelog.LOGGER.info("Changelog cache expired after {} minutes", cacheAge.toMinutes());
+                return false;
+            }
+
+            CTNHChangelog.LOGGER.info("Changelog cache is fresh, age: {} minutes", cacheAge.toMinutes());
+            return true;
+        } catch (Exception e) {
+            CTNHChangelog.LOGGER.warn("Failed to check changelog cache freshness: {}", e.getMessage());
+            return false;
+        }
     }
 
     private static String getCacheFileName() {

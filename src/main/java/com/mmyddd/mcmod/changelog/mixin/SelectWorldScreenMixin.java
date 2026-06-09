@@ -39,7 +39,7 @@ public abstract class SelectWorldScreenMixin extends Screen {
     @Inject(method = "init", at = @At("HEAD"))
     private void onInitHead(CallbackInfo ci) {
         if (Config.isChangelogTabEnabled() && !Config.getModpackVersion().isEmpty()) {
-            VersionCheckService.reset();
+            ChangelogEntry.ensureLoadedForCurrentConfig();
             VersionCheckService.checkForUpdate();
         }
     }
@@ -52,8 +52,7 @@ public abstract class SelectWorldScreenMixin extends Screen {
         ctnhChangelogButton = Button.builder(
                 Component.translatable("ctnhchangelog.button.changelog"),
                 button -> {
-                    ChangelogEntry.resetLoaded();
-                    ChangelogEntry.loadAfterConfig();
+                    ChangelogEntry.ensureLoadedForCurrentConfig();
                     Minecraft.getInstance().setScreen(
                             new ChangelogOverviewScreen((SelectWorldScreen) (Object) this)
                     );

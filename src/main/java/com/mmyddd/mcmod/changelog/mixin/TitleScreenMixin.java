@@ -34,7 +34,7 @@ public abstract class TitleScreenMixin extends Screen {
     @Inject(method = "init", at = @At("HEAD"))
     private void onInitHead(CallbackInfo ci) {
         if (Config.isChangelogTabEnabled() && !Config.getModpackVersion().isEmpty()) {
-            VersionCheckService.reset();
+            ChangelogEntry.ensureLoadedForCurrentConfig();
             VersionCheckService.checkForUpdate();
         }
     }
@@ -50,8 +50,7 @@ public abstract class TitleScreenMixin extends Screen {
         ctnhChangelogButton = Button.builder(
                 Component.translatable("ctnhchangelog.button.changelog"),
                 button -> {
-                    ChangelogEntry.resetLoaded();
-                    ChangelogEntry.loadAfterConfig();
+                    ChangelogEntry.ensureLoadedForCurrentConfig();
                     Minecraft.getInstance().setScreen(
                             new ChangelogOverviewScreen((TitleScreen) (Object) this)
                     );

@@ -8,6 +8,7 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -289,9 +290,7 @@ public class ChangelogEditorScreen extends Screen {
     }
 
     private Path getGameDirectory() {
-        @SuppressWarnings("resource")
-        Minecraft minecraft = Minecraft.getInstance();
-        return Path.of(minecraft.gameDirectory.getAbsolutePath());
+        return FMLPaths.GAMEDIR.get();
     }
 
     private void parseAndLoadJson(String json) {

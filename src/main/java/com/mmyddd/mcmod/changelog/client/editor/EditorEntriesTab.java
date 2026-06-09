@@ -1083,7 +1083,7 @@ public class EditorEntriesTab {
                         int centerX = tagRowX + pw / 2;
                         if (Math.abs(tagDragMouseX - centerX) < pw / 2
                                 && Math.abs(tagDragMouseY - (tagRowY + 9)) < 15) {
-                            String temp = entry.tags.get(tagDragIndex);
+                            String temp = entry .tags.get(tagDragIndex);
                             entry.tags.set(tagDragIndex, entry.tags.get(i));
                             entry.tags.set(i, temp);
                             tagDragIndex = i;
