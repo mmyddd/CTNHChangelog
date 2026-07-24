@@ -1,6 +1,5 @@
 package com.mmyddd.mcmod.changelog.client;
 
-import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -17,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
+import java.security.MessageDigest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -39,7 +39,7 @@ public class ChangelogEntry {
     private final String version;
     private final String date;
     private final String title;
-    private final List<String> changes;
+    private final List<ChangeNode> changes;
     private final List<String> types;
     private final int color;
     private final List<String> tags;
@@ -55,6 +55,7 @@ public class ChangelogEntry {
     private static volatile boolean isLoaded = false;
     private static volatile boolean isLoadingComplete = false;
     private static volatile String loadedLanguage = "";
+    private static volatile String loadedRemoteUrl = "";
 
     private static volatile CompletableFuture<Void> loadFuture = null;
 
@@ -63,12 +64,17 @@ public class ChangelogEntry {
 
     private static volatile Path cacheDirectory = null;
 
-    public ChangelogEntry(String version, String date, String title, List<String> changes, List<String> types, int color, List<String> tags) {
+    public ChangelogEntry(String version, String date, String title, List<ChangeNode> changes, List<String> types, int color, List<String> tags) {
         this.version = version;
         this.date = date;
         this.title = title;
         // 防御性拷贝，防止外部修改影响内部状态
-        this.changes = new ArrayList<>(changes);
+        this.changes = new ArrayList<>();
+        if (changes != null) {
+            for (ChangeNode change : changes) {
+                this.changes.add(change.copy());
+            }
+        }
         this.types = types != null ? new ArrayList<>(types) : new ArrayList<>();
         this.color = color;
         this.tags = tags != null ? new ArrayList<>(tags) : new ArrayList<>();
@@ -87,7 +93,19 @@ public class ChangelogEntry {
     }
 
     public List<String> getChanges() {
-        return new ArrayList<>(changes);
+        List<String> flattened = new ArrayList<>();
+        for (ChangeNode change : changes) {
+            flattenCompatibility(change, flattened, 0);
+        }
+        return flattened;
+    }
+
+    public List<ChangeNode> getChangeTree() {
+        List<ChangeNode> copied = new ArrayList<>();
+        for (ChangeNode change : changes) {
+            copied.add(change.copy());
+        }
+        return copied;
     }
 
     public List<String> getTypes() {
@@ -104,6 +122,18 @@ public class ChangelogEntry {
 
     public boolean hasTag(String tag) {
         return tags.contains(tag);
+    }
+
+    private static void flattenCompatibility(ChangeNode node, List<String> target, int depth) {
+        if (!node.isHeading()) {
+            target.add("  ".repeat(depth) + node.getText());
+            return;
+        }
+        int headingLevel = depth + 1;
+        target.add("#".repeat(headingLevel) + " " + node.getTitle());
+        for (ChangeNode child : node.getChildren()) {
+            flattenCompatibility(child, target, depth + 1);
+        }
     }
 
     public static String getFooterText() {
@@ -127,11 +157,38 @@ public class ChangelogEntry {
     }
 
     public static String getCacheFileNameForCurrentLanguage() {
-        return getCacheFileName();
+        return getCacheFileName(Config.getSelectedChangelogLanguage(), Config.getSelectedChangelogUrl());
     }
 
     public static List<ChangelogEntry> getAllEntries() {
         return ALL_ENTRIES;
+    }
+
+    public static synchronized void applyDocument(ChangelogDocument.Document document) {
+        if (document == null) {
+            return;
+        }
+
+        List<ChangelogEntry> entries = new ArrayList<>();
+        for (ChangelogDocument.EntryData entry : document.entries) {
+            entries.add(new ChangelogEntry(
+                    entry.version,
+                    entry.date,
+                    entry.title,
+                    entry.changes,
+                    entry.types,
+                    entry.accent,
+                    entry.tags
+            ));
+        }
+        TAG_COLORS = new ConcurrentHashMap<>(document.tagColors);
+        footerText = document.footer;
+        ALL_ENTRIES = Collections.unmodifiableList(entries);
+        isLoaded = true;
+        isLoadingComplete = true;
+        loadedLanguage = Config.getSelectedChangelogLanguage();
+        loadedRemoteUrl = normalizeRemoteUrl(Config.getSelectedChangelogUrl());
+        loadFuture = CompletableFuture.completedFuture(null);
     }
 
     public static synchronized CompletableFuture<Void> getLoadFuture() {
@@ -183,17 +240,24 @@ public class ChangelogEntry {
     }
 
     public static synchronized void loadAfterConfig() {
+        loadAfterConfig(false);
+    }
+
+    public static synchronized void loadAfterConfig(boolean forceRemoteValidation) {
         if (loadFuture != null && !loadFuture.isDone()) {
             CTNHChangelog.LOGGER.debug("Changelog load already running, reusing current load");
             return;
         }
 
-        if (hasFreshLoadedData()) {
+        if (!forceRemoteValidation && hasFreshLoadedData()) {
             CTNHChangelog.LOGGER.info("Changelog data already loaded and cache is fresh, reusing in-memory data");
             return;
         }
 
-        startLoadAfterConfig();
+        if (forceRemoteValidation) {
+            CTNHChangelog.LOGGER.info("Manual refresh requested, bypassing fresh cache and checking remote ETag");
+        }
+        startLoadAfterConfig(forceRemoteValidation);
     }
 
     public static synchronized void reloadAfterConfig() {
@@ -203,10 +267,10 @@ public class ChangelogEntry {
         }
 
         resetLoaded();
-        startLoadAfterConfig();
+        startLoadAfterConfig(false);
     }
 
-    private static void startLoadAfterConfig() {
+    private static void startLoadAfterConfig(boolean forceRemoteValidation) {
         String remoteUrl = Config.getSelectedChangelogUrl();
         String selectedLanguage = Config.getSelectedChangelogLanguage();
 
@@ -215,16 +279,18 @@ public class ChangelogEntry {
 
         if (remoteUrl != null && !remoteUrl.isEmpty()) {
             loadFuture = CompletableFuture.runAsync(() -> {
-                LoadSource loadSource = loadData(remoteUrl, selectedLanguage);
+                LoadSource loadSource = loadData(remoteUrl, selectedLanguage, forceRemoteValidation);
                 if (loadSource != LoadSource.UNAVAILABLE) {
                     isLoaded = true;
                     loadedLanguage = selectedLanguage;
+                    loadedRemoteUrl = normalizeRemoteUrl(remoteUrl);
                     CTNHChangelog.LOGGER.info("Successfully loaded changelog from {}", loadSource.name().toLowerCase(Locale.ROOT));
                 } else {
                     CTNHChangelog.LOGGER.warn("Failed to load from remote, falling back to local resources");
                     loadFromResources(selectedLanguage);
                     isLoaded = true;
                     loadedLanguage = selectedLanguage;
+                    loadedRemoteUrl = normalizeRemoteUrl(remoteUrl);
                 }
                 isLoadingComplete = true;
             });
@@ -234,6 +300,7 @@ public class ChangelogEntry {
                 loadFromResources(selectedLanguage);
                 isLoaded = true;
                 loadedLanguage = selectedLanguage;
+                loadedRemoteUrl = "";
                 isLoadingComplete = true;
             });
         }
@@ -257,6 +324,7 @@ public class ChangelogEntry {
     private static boolean hasFreshLoadedData() {
         return isLoaded && isLoadingComplete
                 && loadedLanguage.equals(Config.getSelectedChangelogLanguage())
+                && loadedRemoteUrl.equals(normalizeRemoteUrl(Config.getSelectedChangelogUrl()))
                 && isCacheFresh();
     }
 
@@ -264,11 +332,12 @@ public class ChangelogEntry {
         isLoaded = false;
         isLoadingComplete = false;
         loadedLanguage = "";
+        loadedRemoteUrl = "";
     }
 
-    private static LoadSource loadData(String remoteUrl, String language) {
+    private static LoadSource loadData(String remoteUrl, String language, boolean forceRemoteValidation) {
         try {
-            if (loadFromCacheWhenFresh(language)) {
+            if (!forceRemoteValidation && loadFromCacheWhenFresh(language, remoteUrl)) {
                 return LoadSource.CACHE;
             }
 
@@ -277,7 +346,7 @@ public class ChangelogEntry {
             if (remoteETag == null) {
                 CTNHChangelog.LOGGER.warn("Failed to fetch remote ETag, checking cache...");
 
-                Path cacheFile = getCacheFile(language);
+                Path cacheFile = getCacheFile(language, remoteUrl);
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to remote unavailable");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -295,8 +364,8 @@ public class ChangelogEntry {
 
             CTNHChangelog.LOGGER.info("Remote ETag: {}", remoteETag);
 
-            Path cacheFile = getCacheFile(language);
-            Path etagFile = getCacheETagFile(language);
+            Path cacheFile = getCacheFile(language, remoteUrl);
+            Path etagFile = getCacheETagFile(language, remoteUrl);
 
             if (Files.exists(cacheFile) && Files.exists(etagFile)) {
                 byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -325,7 +394,7 @@ public class ChangelogEntry {
             CTNHChangelog.LOGGER.error("Failed to load data: {}", e.getMessage());
 
             try {
-                Path cacheFile = getCacheFile(language);
+                Path cacheFile = getCacheFile(language, remoteUrl);
                 if (Files.exists(cacheFile)) {
                     CTNHChangelog.LOGGER.info("Using cached data due to error");
                     byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -375,8 +444,8 @@ public class ChangelogEntry {
             boolean success = loadFromStream(new ByteArrayInputStream(data));
 
             if (success) {
-                Path cacheFile = getCacheFile(language);
-                Path etagFile = getCacheETagFile(language);
+                Path cacheFile = getCacheFile(language, urlStr);
+                Path etagFile = getCacheETagFile(language, urlStr);
 
                 Files.write(cacheFile, data);
                 if (remoteETag != null && !remoteETag.isEmpty()) {
@@ -454,16 +523,26 @@ public class ChangelogEntry {
     }
 
     private static Path getCacheFile(String language) {
-        return getCacheDirectory().resolve(getCacheFileName(language));
+        return getCacheFile(language, Config.getSelectedChangelogUrl());
+    }
+
+    private static Path getCacheFile(String language, String remoteUrl) {
+        Path cacheFile = getCacheDirectory().resolve(getCacheFileName(language, remoteUrl));
+        CTNHChangelog.LOGGER.debug("Using changelog cache file: {}", cacheFile.toAbsolutePath());
+        return cacheFile;
     }
 
     private static Path getCacheETagFile(String language) {
-        return getCacheDirectory().resolve(getCacheFileName(language) + ".etag");
+        return getCacheETagFile(language, Config.getSelectedChangelogUrl());
     }
 
-    private static boolean loadFromCacheWhenFresh(String language) {
-        Path cacheFile = getCacheFile(language);
-        if (isCacheFresh(language)) {
+    private static Path getCacheETagFile(String language, String remoteUrl) {
+        return getCacheDirectory().resolve(getCacheFileName(language, remoteUrl) + ".etag");
+    }
+
+    private static boolean loadFromCacheWhenFresh(String language, String remoteUrl) {
+        Path cacheFile = getCacheFile(language, remoteUrl);
+        if (isCacheFresh(language, remoteUrl)) {
             try {
                 CTNHChangelog.LOGGER.info("Using fresh changelog cache");
                 byte[] cachedData = Files.readAllBytes(cacheFile);
@@ -485,16 +564,20 @@ public class ChangelogEntry {
     }
 
     private static boolean isCacheFresh() {
-        return isCacheFresh(Config.getSelectedChangelogLanguage());
+        return isCacheFresh(Config.getSelectedChangelogLanguage(), Config.getSelectedChangelogUrl());
     }
 
     private static boolean isCacheFresh(String language) {
+        return isCacheFresh(language, Config.getSelectedChangelogUrl());
+    }
+
+    private static boolean isCacheFresh(String language, String remoteUrl) {
         int ttlMinutes = Config.getCacheTtlMinutes();
         if (ttlMinutes <= 0) {
             return false;
         }
 
-        Path cacheFile = getCacheFile(language);
+        Path cacheFile = getCacheFile(language, remoteUrl);
         if (!Files.exists(cacheFile)) {
             return false;
         }
@@ -516,14 +599,41 @@ public class ChangelogEntry {
     }
 
     private static String getCacheFileName() {
-        return getCacheFileName(Config.getSelectedChangelogLanguage());
+        return getCacheFileName(Config.getSelectedChangelogLanguage(), Config.getSelectedChangelogUrl());
     }
 
     private static String getCacheFileName(String language) {
+        return getCacheFileName(language, Config.getSelectedChangelogUrl());
+    }
+
+    private static String getCacheFileName(String language, String remoteUrl) {
+        String languageSuffix = "";
         if (language.equals("ru") || language.equals("en")) {
-            return CACHE_FILE_PREFIX + "_" + language + ".json";
+            languageSuffix = "_" + language;
         }
-        return CACHE_FILE_PREFIX + ".json";
+        String normalizedUrl = normalizeRemoteUrl(remoteUrl);
+        if (normalizedUrl.isEmpty()) {
+            return CACHE_FILE_PREFIX + languageSuffix + ".json";
+        }
+        return CACHE_FILE_PREFIX + languageSuffix + "_" + getRemoteUrlHash(normalizedUrl) + ".json";
+    }
+
+    private static String normalizeRemoteUrl(String remoteUrl) {
+        return remoteUrl == null ? "" : remoteUrl.trim();
+    }
+
+    private static String getRemoteUrlHash(String remoteUrl) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(remoteUrl.getBytes(StandardCharsets.UTF_8));
+            StringBuilder result = new StringBuilder(16);
+            for (int i = 0; i < 8; i++) {
+                result.append(String.format(Locale.ROOT, "%02x", digest[i]));
+            }
+            return result.toString();
+        } catch (Exception e) {
+            return Integer.toHexString(remoteUrl.hashCode());
+        }
     }
 
     private static String[] getLocalChangelogResourceCandidates(String language) {
@@ -539,80 +649,22 @@ public class ChangelogEntry {
     private static boolean loadFromStream(InputStream is) {
         try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
             JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+            ChangelogDocument.Document document = ChangelogJsonReader.read(root);
 
-            if (root.has("footer")) {
-                footerText = root.get("footer").getAsString();
-                CTNHChangelog.LOGGER.info("Loaded footer text: {}", footerText);
-            }
+            footerText = document.footer;
+            TAG_COLORS = new ConcurrentHashMap<>(document.tagColors);
 
-            if (root.has("tagColors")) {
-                JsonObject tagColorsObj = root.getAsJsonObject("tagColors");
-                // 先构建完整的临时 Map，再一次性替换引用，避免渲染线程读到不完整状态
-                Map<String, Integer> newTagColors = new ConcurrentHashMap<>();
-                for (Map.Entry<String, JsonElement> entry : tagColorsObj.entrySet()) {
-                    String tag = entry.getKey();
-                    String colorStr = entry.getValue().getAsString();
-                    int color = parseColor(colorStr);
-                    newTagColors.put(tag, color);
-                    CTNHChangelog.LOGGER.debug("Loaded tag color: {} = {}", tag, colorStr);
-                }
-                TAG_COLORS = newTagColors;
-            } else {
-                CTNHChangelog.LOGGER.info("No tagColors defined in JSON");
-                TAG_COLORS = new ConcurrentHashMap<>();
-            }
-
-            JsonArray entriesArray = root.getAsJsonArray("entries");
             List<ChangelogEntry> entries = new ArrayList<>();
-
-            for (JsonElement element : entriesArray) {
-                JsonObject obj = element.getAsJsonObject();
-                String version = obj.get("version").getAsString();
-                String date = obj.has("date") ? obj.get("date").getAsString() : "";
-                String title = obj.has("title") ? obj.get("title").getAsString() : "";
-
-                List<String> changes = new ArrayList<>();
-                if (obj.has("changes")) {
-                    JsonArray changesArray = obj.getAsJsonArray("changes");
-                    for (JsonElement change : changesArray) {
-                        changes.add(change.getAsString());
-                    }
-                }
-
-                List<String> types = new ArrayList<>();
-                if (obj.has("type")) {
-                    JsonElement typeElement = obj.get("type");
-                    if (typeElement.isJsonArray()) {
-                        JsonArray typeArray = typeElement.getAsJsonArray();
-                        for (JsonElement type : typeArray) {
-                            types.add(type.getAsString());
-                        }
-                    } else if (typeElement.isJsonPrimitive()) {
-                        types.add(typeElement.getAsString());
-                    }
-                } else {
-                    types.add("patch");
-                }
-
-                String colorStr = obj.has("color") ? obj.get("color").getAsString() : "#FFFFFF";
-                int color = parseColor(colorStr);
-
-                List<String> tags = new ArrayList<>();
-                if (obj.has("tags")) {
-                    JsonElement tagsElement = obj.get("tags");
-                    if (tagsElement.isJsonArray()) {
-                        JsonArray tagsArray = tagsElement.getAsJsonArray();
-                        for (JsonElement tag : tagsArray) {
-                            tags.add(tag.getAsString());
-                        }
-                    } else if (tagsElement.isJsonPrimitive()) {
-                        tags.add(tagsElement.getAsString());
-                    }
-                } else if (obj.has("tag")) {
-                    tags.add(obj.get("tag").getAsString());
-                }
-
-                entries.add(new ChangelogEntry(version, date, title, changes, types, color, tags));
+            for (ChangelogDocument.EntryData entry : document.entries) {
+                entries.add(new ChangelogEntry(
+                        entry.version,
+                        entry.date,
+                        entry.title,
+                        entry.changes,
+                        entry.types,
+                        entry.accent,
+                        entry.tags
+                ));
             }
 
             // 使用不可变列表包装，保证线程安全的同时防止外部修改
@@ -624,43 +676,12 @@ public class ChangelogEntry {
         }
     }
 
-    private static int parseColor(String colorStr) {
-        try {
-            if (colorStr.startsWith("0x") || colorStr.startsWith("0X")) {
-                String hex = colorStr.substring(2);
-                if (hex.length() == 6) {
-                    return (int) Long.parseLong("FF" + hex, 16);
-                } else if (hex.length() == 8) {
-                    return (int) Long.parseLong(hex, 16);
-                }
-                // 0x 前缀但十六进制长度既非6也非8，视为无效格式
-                CTNHChangelog.LOGGER.warn("Invalid hex color length: {}, using default white", colorStr);
-                return 0xFFFFFFFF;
-            } else if (colorStr.startsWith("#")) {
-                String hex = colorStr.substring(1);
-                if (hex.length() == 6) {
-                    return (int) Long.parseLong("FF" + hex, 16);
-                } else if (hex.length() == 8) {
-                    return (int) Long.parseLong(hex, 16);
-                }
-                // # 前缀但十六进制长度既非6也非8，视为无效格式
-                CTNHChangelog.LOGGER.warn("Invalid hex color length: {}, using default white", colorStr);
-                return 0xFFFFFFFF;
-            } else {
-                return Integer.parseInt(colorStr);
-            }
-        } catch (Exception e) {
-            CTNHChangelog.LOGGER.warn("Failed to parse color: {}, using default white", colorStr);
-            return 0xFFFFFFFF;
-        }
-    }
-
     private static void loadDefaultEntries() {
         TAG_COLORS = new ConcurrentHashMap<>();
         footerText = "Hello World!";
 
-        List<String> changes1 = new ArrayList<>();
-        changes1.add("这是一个示例");
+        List<ChangeNode> changes1 = new ArrayList<>();
+        changes1.add(ChangeNode.bullet("这是一个示例"));
 
         List<String> types1 = new ArrayList<>();
         types1.add("major");

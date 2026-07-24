@@ -2,6 +2,7 @@ package com.mmyddd.mcmod.changelog.client.editor;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.mmyddd.mcmod.changelog.client.ChangeNode;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
 
 import java.util.ArrayList;
@@ -17,6 +18,8 @@ public class EditableEntry {
     public List<String> types;
     public List<String> tags;
     public int color;
+    public List<EditableChangeNode> changeTree;
+    /** Kept as a compatibility view for the old tab class while it is being replaced. */
     public List<String> changes;
 
     public EditableEntry() {
@@ -26,6 +29,7 @@ public class EditableEntry {
         this.types = new ArrayList<>(List.of("patch"));
         this.tags = new ArrayList<>();
         this.color = 0xFFFFFF00;
+        this.changeTree = new ArrayList<>();
         this.changes = new ArrayList<>();
     }
 
@@ -36,19 +40,26 @@ public class EditableEntry {
         this.types = new ArrayList<>(other.types);
         this.tags = new ArrayList<>(other.tags);
         this.color = other.color;
+        this.changeTree = new ArrayList<>();
+        for (EditableChangeNode node : other.changeTree) {
+            this.changeTree.add(node.copy());
+        }
         this.changes = new ArrayList<>(other.changes);
     }
 
     public static EditableEntry fromChangelogEntry(ChangelogEntry entry) {
-        EditableEntry e = new EditableEntry();
-        e.version = entry.getVersion();
-        e.date = entry.getDate();
-        e.title = entry.getTitle();
-        e.types = new ArrayList<>(entry.getTypes());
-        e.tags = new ArrayList<>(entry.getTags());
-        e.color = entry.getColor();
-        e.changes = new ArrayList<>(entry.getChanges());
-        return e;
+        EditableEntry editable = new EditableEntry();
+        editable.version = entry.getVersion();
+        editable.date = entry.getDate();
+        editable.title = entry.getTitle();
+        editable.types = new ArrayList<>(entry.getTypes());
+        editable.tags = new ArrayList<>(entry.getTags());
+        editable.color = entry.getColor();
+        for (ChangeNode node : entry.getChangeTree()) {
+            editable.changeTree.add(EditableChangeNode.fromChangeNode(node));
+        }
+        editable.syncLegacyChanges();
+        return editable;
     }
 
     public void sortTypes() {
@@ -62,32 +73,49 @@ public class EditableEntry {
         });
     }
 
+    public void syncLegacyChanges() {
+        changes.clear();
+        for (EditableChangeNode node : changeTree) {
+            flattenCompatibility(node, changes, 0);
+        }
+    }
+
+    private static void flattenCompatibility(EditableChangeNode node, List<String> target, int depth) {
+        if (!node.isHeading()) {
+            target.add("  ".repeat(depth) + (node.text == null ? "" : node.text));
+            return;
+        }
+        int headingLevel = depth + 1;
+        target.add("#".repeat(headingLevel) + " " + (node.title == null ? "" : node.title));
+        for (EditableChangeNode child : node.children) {
+            flattenCompatibility(child, target, depth + 1);
+        }
+    }
+
     public JsonObject toJson() {
-        JsonObject obj = new JsonObject();
-        obj.addProperty("version", version);
-        obj.addProperty("date", date);
-        obj.addProperty("title", title);
+        JsonObject object = new JsonObject();
+        object.addProperty("version", version);
+        object.addProperty("date", date);
+        object.addProperty("title", title);
 
         JsonArray typeArray = new JsonArray();
-        for (String t : types) {
-            typeArray.add(t);
+        for (String type : types) {
+            typeArray.add(type);
         }
-        obj.add("type", typeArray);
+        object.add("types", typeArray);
 
         JsonArray tagsArray = new JsonArray();
-        for (String t : tags) {
-            tagsArray.add(t);
+        for (String tag : tags) {
+            tagsArray.add(tag);
         }
-        obj.add("tags", tagsArray);
-
-        obj.addProperty("color", String.format("0xFF%06X", color & 0x00FFFFFF));
+        object.add("tags", tagsArray);
+        object.addProperty("accent", String.format("#%06X", color & 0x00FFFFFF));
 
         JsonArray changesArray = new JsonArray();
-        for (String c : changes) {
-            changesArray.add(c);
+        for (EditableChangeNode node : changeTree) {
+            changesArray.add(node.toChangeNode().toJson());
         }
-        obj.add("changes", changesArray);
-
-        return obj;
+        object.add("changes", changesArray);
+        return object;
     }
 }

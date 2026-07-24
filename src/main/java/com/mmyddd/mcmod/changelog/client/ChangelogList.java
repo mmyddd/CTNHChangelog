@@ -163,15 +163,23 @@ public class ChangelogList extends ObjectSelectionList<ChangelogList.Entry> {
             String hintText = "(" + Component.translatable("ctnhchangelog.button.view_changelog").getString() + ")";
             int hintTextWidth = font.width(hintText);
 
-            if (!changelogEntry.getChanges().isEmpty()) {
-                String preview = "• " + changelogEntry.getChanges().get(0);
+            List<ChangeNode> changeTree = changelogEntry.getChangeTree();
+            if (!changeTree.isEmpty()) {
+                ChangeNode firstNode = changeTree.get(0);
+                String preview = firstNode.isHeading()
+                        ? firstNode.getTitle() + ": " + firstNode.firstText()
+                        : "• " + firstNode.getText();
                 if (preview.length() > MAX_PREVIEW_LENGTH) {
                     preview = preview.substring(0, MAX_PREVIEW_LENGTH - 3) + "...";
                 }
                 graphics.drawString(font, preview, textLeft, line3Y, 0xFFAAAAAA);
 
-                if (changelogEntry.getChanges().size() > 1) {
-                    String moreText = Component.translatable("ctnhchangelog.more_changes", changelogEntry.getChanges().size() - 1).getString();
+                int bulletCount = 0;
+                for (ChangeNode node : changeTree) {
+                    bulletCount += node.countBullets();
+                }
+                if (bulletCount > 1) {
+                    String moreText = Component.translatable("ctnhchangelog.more_changes", bulletCount - 1).getString();
                     int moreTextX = left + width - hintTextWidth - 120;
                     graphics.drawString(font, moreText, moreTextX, line3Y, 0xFF888888);
                 }

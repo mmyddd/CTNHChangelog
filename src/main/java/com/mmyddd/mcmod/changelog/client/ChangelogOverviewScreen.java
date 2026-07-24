@@ -1,7 +1,7 @@
 package com.mmyddd.mcmod.changelog.client;
 
 import com.mmyddd.mcmod.changelog.Config;
-import com.mmyddd.mcmod.changelog.client.editor.ChangelogEditorScreen;
+import com.mmyddd.mcmod.changelog.client.editor.CommandDeckEditorScreen;
 import lombok.Getter;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -52,7 +52,7 @@ public class ChangelogOverviewScreen extends Screen {
             this.addRenderableWidget(
                     Button.builder(
                                     Component.translatable("ctnhchangelog.editor.title"),
-                                    button -> this.minecraft.setScreen(new ChangelogEditorScreen(this))
+                                    button -> this.minecraft.setScreen(new CommandDeckEditorScreen(this))
                             )
                             .bounds(this.width - 130, 10, 90, 20)
                             .build()
@@ -70,7 +70,7 @@ public class ChangelogOverviewScreen extends Screen {
                                         ChangelogEntry.resetLoaded();
 
                                         CompletableFuture.runAsync(() -> {
-                                            ChangelogEntry.loadAfterConfig();
+                                            ChangelogEntry.loadAfterConfig(true);
                                             while (!ChangelogEntry.isLoadingComplete()) {
                                                 try {
                                                     Thread.sleep(100);

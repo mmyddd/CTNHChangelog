@@ -1,8 +1,10 @@
 package com.mmyddd.mcmod.changelog.client.editor;
 
-import com.google.gson.*;
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
+import com.mmyddd.mcmod.changelog.client.ChangeNode;
+import com.mmyddd.mcmod.changelog.client.ChangelogDocument;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
+import com.mmyddd.mcmod.changelog.client.ChangelogJsonReader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -294,106 +296,48 @@ public class ChangelogEditorScreen extends Screen {
     }
 
     private void parseAndLoadJson(String json) {
-        JsonObject root = JsonParser.parseString(json).getAsJsonObject();
-
-        // 解析 entries
+        ChangelogDocument.Document document = ChangelogJsonReader.read(json);
         entries.clear();
-        if (root.has("entries")) {
-            JsonArray entriesArray = root.getAsJsonArray("entries");
-            for (JsonElement el : entriesArray) {
-                JsonObject obj = el.getAsJsonObject();
-                EditableEntry e = new EditableEntry();
-                e.version = obj.has("version") ? obj.get("version").getAsString() : "1.0.0";
-                e.date = obj.has("date") ? obj.get("date").getAsString() : "";
-                e.title = obj.has("title") ? obj.get("title").getAsString() : "";
-                e.color = obj.has("color") ? parseColor(obj.get("color").getAsString()) : 0xFFFFFF00;
-
-                // type
-                e.types = new ArrayList<>();
-                if (obj.has("type")) {
-                    JsonElement typeEl = obj.get("type");
-                    if (typeEl.isJsonArray()) {
-                        for (JsonElement t : typeEl.getAsJsonArray()) e.types.add(t.getAsString());
-                    } else {
-                        e.types.add(typeEl.getAsString());
-                    }
-                } else {
-                    e.types.add("patch");
-                }
-
-                // tags
-                e.tags = new ArrayList<>();
-                if (obj.has("tags")) {
-                    JsonElement tagsEl = obj.get("tags");
-                    if (tagsEl.isJsonArray()) {
-                        for (JsonElement t : tagsEl.getAsJsonArray()) e.tags.add(t.getAsString());
-                    } else {
-                        e.tags.add(tagsEl.getAsString());
-                    }
-                } else if (obj.has("tag")) {
-                    e.tags.add(obj.get("tag").getAsString());
-                }
-
-                // changes
-                e.changes = new ArrayList<>();
-                if (obj.has("changes")) {
-                    for (JsonElement c : obj.getAsJsonArray("changes")) e.changes.add(c.getAsString());
-                }
-
-                entries.add(e);
+        for (ChangelogDocument.EntryData entryData : document.entries) {
+            EditableEntry entry = new EditableEntry();
+            entry.version = entryData.version;
+            entry.date = entryData.date;
+            entry.title = entryData.title;
+            entry.types = new ArrayList<>(entryData.types);
+            entry.tags = new ArrayList<>(entryData.tags);
+            entry.color = entryData.accent;
+            for (ChangeNode node : entryData.changes) {
+                entry.changeTree.add(EditableChangeNode.fromChangeNode(node));
             }
+            entry.syncLegacyChanges();
+            entries.add(entry);
         }
-
-        // 解析 tagColors
         tagColors.clear();
-        if (root.has("tagColors")) {
-            for (Map.Entry<String, JsonElement> tc : root.getAsJsonObject("tagColors").entrySet()) {
-                tagColors.put(tc.getKey(), parseColor(tc.getValue().getAsString()));
-            }
-        }
-
-        // 解析 footer
-        footerText = root.has("footer") ? root.get("footer").getAsString() : "";
+        tagColors.putAll(document.tagColors);
+        footerText = document.footer;
 
         // 刷新当前标签页
         switchTab(currentTab);
     }
 
     private String buildJsonString() {
-        JsonObject root = new JsonObject();
-        root.addProperty("footer", footerText);
-
-        JsonArray entriesArray = new JsonArray();
-        for (EditableEntry e : entries) {
-            entriesArray.add(e.toJson());
-        }
-        root.add("entries", entriesArray);
-
-        JsonObject tagColorsObj = new JsonObject();
-        for (Map.Entry<String, Integer> tc : tagColors.entrySet()) {
-            tagColorsObj.addProperty(tc.getKey(),
-                    String.format("0xFF%06X", tc.getValue() & 0x00FFFFFF));
-        }
-        root.add("tagColors", tagColorsObj);
-
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        return gson.toJson(root);
-    }
-
-    private static int parseColor(String colorStr) {
-        try {
-            if (colorStr.startsWith("0x") || colorStr.startsWith("0X")) {
-                String hex = colorStr.substring(2);
-                if (hex.length() == 6) return (int) Long.parseLong("FF" + hex, 16);
-                if (hex.length() == 8) return (int) Long.parseLong(hex, 16);
-            } else if (colorStr.startsWith("#")) {
-                String hex = colorStr.substring(1);
-                if (hex.length() == 6) return (int) Long.parseLong("FF" + hex, 16);
-                if (hex.length() == 8) return (int) Long.parseLong(hex, 16);
+        List<ChangelogDocument.EntryData> data = new ArrayList<>();
+        for (EditableEntry entry : entries) {
+            List<ChangeNode> changes = new ArrayList<>();
+            for (EditableChangeNode node : entry.changeTree) {
+                changes.add(node.toChangeNode());
             }
-        } catch (Exception ignored) {
+            data.add(new ChangelogDocument.EntryData(
+                    entry.version,
+                    entry.date,
+                    entry.title,
+                    entry.types,
+                    entry.tags,
+                    entry.color,
+                    changes
+            ));
         }
-        return 0xFFFFFF00;
+        return ChangelogDocument.toPrettyJson(new ChangelogDocument.Document(footerText, tagColors, data));
     }
 
     // endregion
