@@ -3,6 +3,7 @@ package com.mmyddd.mcmod.changelog.client.editor;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.mmyddd.mcmod.changelog.client.ChangeNode;
+import com.mmyddd.mcmod.changelog.client.ChangelogDocument;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
 
 import java.util.ArrayList;
@@ -55,6 +56,7 @@ public class EditableEntry {
         editable.date = entry.getDate();
         editable.title = entry.getTitle();
         editable.types = new ArrayList<>(entry.getTypes());
+        editable.allowEmptyTypes = editable.types.isEmpty();
         editable.tags = new ArrayList<>(entry.getTags());
         editable.color = entry.getColor();
         for (ChangeNode node : entry.getChangeTree()) {
@@ -111,7 +113,7 @@ public class EditableEntry {
             tagsArray.add(tag);
         }
         object.add("tags", tagsArray);
-        object.addProperty("accent", String.format("#%06X", color & 0x00FFFFFF));
+        object.addProperty("accent", ChangelogDocument.formatColor(color));
 
         JsonArray changesArray = new JsonArray();
         for (EditableChangeNode node : changeTree) {

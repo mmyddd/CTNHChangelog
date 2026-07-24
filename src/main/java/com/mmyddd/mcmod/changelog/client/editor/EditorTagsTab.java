@@ -1,5 +1,6 @@
 package com.mmyddd.mcmod.changelog.client.editor;
 
+import com.mmyddd.mcmod.changelog.client.ChangelogDocument;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -86,7 +87,7 @@ public class EditorTagsTab {
                     screen.getScreenFont(), MARGIN + 210 + 24, y, 100, 20,
                     Component.literal("Tag Color")
             );
-            colorBox.setValue(String.format("#%06X", colorValues.get(i) & 0x00FFFFFF));
+            colorBox.setValue(ChangelogDocument.formatColor(colorValues.get(i)));
             colorBox.setBordered(true);
             setCommitAction(colorBox, this::syncToData);
             markCommittedValue(colorBox);
@@ -387,11 +388,14 @@ public class EditorTagsTab {
                     if (colorPickerTargetIndex >= 0) {
                         List<String> names = new ArrayList<>(editor.getTagColors().keySet());
                         if (colorPickerTargetIndex < names.size()) {
-                            editor.setTagColor(names.get(colorPickerTargetIndex), newColor);
+                            String tagName = names.get(colorPickerTargetIndex);
+                            int previousColor = editor.getTagColors().getOrDefault(tagName, 0xFF888888);
+                            int updatedColor = (previousColor & 0xFF000000) | (newColor & 0x00FFFFFF);
+                            editor.setTagColor(tagName, updatedColor);
                             // 同步颜色 EditBox
                             if (colorPickerTargetIndex < tagColorBoxes.size()) {
                                 tagColorBoxes.get(colorPickerTargetIndex)
-                                        .setValue(String.format("#%06X", newColor & 0x00FFFFFF));
+                                        .setValue(ChangelogDocument.formatColor(updatedColor));
                                 markCommittedValue(tagColorBoxes.get(colorPickerTargetIndex));
                             }
                         }
@@ -503,22 +507,19 @@ public class EditorTagsTab {
         }
     }
 
-    /**
-     * 解析颜色字符串。
-     * 支持格式：#RRGGBB 或 0xFFRRGGBB
-     * @return 解析后的 ARGB int，失败返回 -1
-     */
-    private int parseColor(String str) {
+    private int parseColor(String value) {
         try {
-            if (str.startsWith("#")) {
-                // #RRGGBB 格式
-                String hex = str.substring(1);
-                if (hex.length() == 6) {
-                    return 0xFF000000 | (int) Long.parseLong(hex, 16);
-                }
-            } else if (str.startsWith("0x") || str.startsWith("0X")) {
-                // 0xFFRRGGBB 格式
-                return (int) Long.parseLong(str.substring(2), 16);
+            String normalized = value == null ? "" : value.trim();
+            if (normalized.startsWith("#")) {
+                normalized = normalized.substring(1);
+            } else if (normalized.startsWith("0x") || normalized.startsWith("0X")) {
+                normalized = normalized.substring(2);
+            }
+            if (normalized.length() == 6) {
+                return (int) Long.parseLong("FF" + normalized, 16);
+            }
+            if (normalized.length() == 8) {
+                return (int) Long.parseLong(normalized, 16);
             }
         } catch (NumberFormatException ignored) {
         }

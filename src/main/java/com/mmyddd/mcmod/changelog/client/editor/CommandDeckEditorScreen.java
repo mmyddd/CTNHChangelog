@@ -1,6 +1,7 @@
 package com.mmyddd.mcmod.changelog.client.editor;
 
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
+import com.mmyddd.mcmod.changelog.client.AtomicFileWriter;
 import com.mmyddd.mcmod.changelog.client.ChangeNode;
 import com.mmyddd.mcmod.changelog.client.ChangelogDocument;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
@@ -15,6 +16,7 @@ import net.minecraft.util.Mth;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.lwjgl.glfw.GLFW;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -471,29 +473,54 @@ public class CommandDeckEditorScreen extends Screen {
         }
     }
 
-    private void syncTagManagementRows() {
+    private boolean syncTagManagementRows() {
         if (tagNameBoxes.isEmpty() || tagColorBoxes.isEmpty()) {
-            return;
+            return true;
         }
+
         List<String> oldNames = new ArrayList<>(tagColors.keySet());
         List<Integer> oldColors = new ArrayList<>(tagColors.values());
         LinkedHashMap<String, Integer> updated = new LinkedHashMap<>();
-        for (int i = 0; i < tagNameBoxes.size(); i++) {
-            String oldName = i < oldNames.size() ? oldNames.get(i) : "";
-            String newName = tagNameBoxes.get(i).getValue().trim();
+        LinkedHashMap<String, String> replacements = new LinkedHashMap<>();
+        Set<String> finalNames = new HashSet<>();
+
+        for (int index = 0; index < tagNameBoxes.size(); index++) {
+            String oldName = index < oldNames.size() ? oldNames.get(index) : "";
+            String newName = tagNameBoxes.get(index).getValue().trim();
+            if (!newName.isEmpty() && !finalNames.add(newName)) {
+                showToast(commandDeckText("tag_exists", newName).getString());
+                return false;
+            }
+
             if (newName.isEmpty()) {
-                removeTagReferences(oldName);
+                replacements.put(oldName, null);
                 continue;
             }
-            int fallback = i < oldColors.size() ? oldColors.get(i) : 0xFF888888;
-            int color = parseManagedColor(tagColorBoxes.get(i).getValue(), fallback);
+
+            int fallback = index < oldColors.size() ? oldColors.get(index) : 0xFF888888;
+            int color = parseManagedColor(tagColorBoxes.get(index).getValue(), fallback);
             updated.put(newName, color);
-            if (!oldName.equals(newName)) {
-                replaceTagReferences(oldName, newName);
+            replacements.put(oldName, newName);
+        }
+
+        for (EditableEntry entry : entries) {
+            for (int index = 0; index < entry.tags.size(); index++) {
+                String oldTag = entry.tags.get(index);
+                if (!replacements.containsKey(oldTag)) {
+                    continue;
+                }
+                String replacement = replacements.get(oldTag);
+                if (replacement == null) {
+                    entry.tags.remove(index--);
+                } else {
+                    entry.tags.set(index, replacement);
+                }
             }
         }
+
         tagColors.clear();
         tagColors.putAll(updated);
+        return true;
     }
 
     private int parseManagedColor(String value, int fallback) {
@@ -515,18 +542,6 @@ public class CommandDeckEditorScreen extends Screen {
         return fallback;
     }
 
-    private void replaceTagReferences(String oldName, String newName) {
-        if (oldName.isEmpty() || oldName.equals(newName)) {
-            return;
-        }
-        for (EditableEntry entry : entries) {
-            for (int i = 0; i < entry.tags.size(); i++) {
-                if (oldName.equals(entry.tags.get(i))) {
-                    entry.tags.set(i, newName);
-                }
-            }
-        }
-    }
 
     private void removeTagReferences(String tagName) {
         if (tagName.isEmpty()) {
@@ -541,7 +556,9 @@ public class CommandDeckEditorScreen extends Screen {
         if (newTagBox == null) {
             return;
         }
-        syncTagManagementRows();
+        if (!syncTagManagementRows()) {
+            return;
+        }
         String tagName = newTagBox.getValue().trim();
         if (tagName.isEmpty()) {
             showToast(commandDeckText("tag_name_required").getString());
@@ -558,7 +575,9 @@ public class CommandDeckEditorScreen extends Screen {
     }
 
     private void removeTagColor(int index) {
-        syncTagManagementRows();
+        if (!syncTagManagementRows()) {
+            return;
+        }
         List<String> names = new ArrayList<>(tagColors.keySet());
         if (index < 0 || index >= names.size()) {
             return;
@@ -572,7 +591,9 @@ public class CommandDeckEditorScreen extends Screen {
     }
 
     private void openTagColorPicker(int index) {
-        syncTagManagementRows();
+        if (!syncTagManagementRows()) {
+            return;
+        }
         List<String> names = new ArrayList<>(tagColors.keySet());
         if (index < 0 || index >= names.size()) {
             return;
@@ -854,7 +875,7 @@ public class CommandDeckEditorScreen extends Screen {
             setBoxValue(titleBox, entry.title);
             setTypeCheckboxes(entry.types);
             setBoxValue(tagsBox, String.join(", ", entry.tags));
-            setBoxValue(accentBox, entry.allowEmptyTypes ? "" : ChangelogDocument.formatColor(entry.color));
+            setBoxValue(accentBox, ChangelogDocument.formatColor(entry.color));
             boundEntry = entry;
         }
         setBoxValue(footerBox, footerText);
@@ -867,7 +888,7 @@ public class CommandDeckEditorScreen extends Screen {
         setBoxHint(versionBox, hasSelection ? "" : "1.2.2");
         setBoxHint(dateBox, hasSelection ? "" : "2026-06-09");
         setBoxHint(titleBox, hasSelection ? "" : commandDeckText("title_placeholder").getString());
-        setBoxHint(accentBox, hasSelection && entry.allowEmptyTypes ? "" : "#D7F26B");
+        setBoxHint(accentBox, hasSelection ? "" : "#D7F26B");
     }
 
     private void setBoxHint(EditBox box, String hint) {
@@ -897,12 +918,13 @@ public class CommandDeckEditorScreen extends Screen {
             entry.version = versionBox.getValue();
             entry.date = dateBox.getValue();
             entry.title = titleBox.getValue();
-            entry.types = getSelectedTypes();
-            if (entry.types.isEmpty() && !entry.allowEmptyTypes) {
-                entry.types.add("patch");
-            } else if (!entry.types.isEmpty()) {
+            List<String> selectedTypes = getSelectedTypes();
+            if (selectedTypes.isEmpty() && !entry.allowEmptyTypes) {
+                selectedTypes.add("patch");
+            } else if (!selectedTypes.isEmpty()) {
                 entry.allowEmptyTypes = false;
             }
+            entry.types = selectedTypes;
             setTypeCheckboxes(entry.types);
             entry.color = ChangelogDocument.parseColor(accentBox.getValue());
         }
@@ -2115,8 +2137,10 @@ public class CommandDeckEditorScreen extends Screen {
                 showToast(commandDeckText("no_export_or_cache").getString());
                 return;
             }
-            ChangelogDocument.Document document = ChangelogJsonReader.read(
-                    Files.readString(input, StandardCharsets.UTF_8));
+            ChangelogDocument.Document document;
+            try (InputStream inputStream = Files.newInputStream(input)) {
+                document = ChangelogJsonReader.read(inputStream);
+            }
             if (isDirty()) {
                 pendingImportDocument = document;
                 pendingImportPath = input;
@@ -2167,8 +2191,7 @@ public class CommandDeckEditorScreen extends Screen {
 
     private void persistDocument(ChangelogDocument.Document document) throws Exception {
         Path output = FMLPaths.GAMEDIR.get().resolve("changelog_opt").resolve("changelog.json");
-        Files.createDirectories(output.getParent());
-        Files.writeString(output, ChangelogDocument.toPrettyJson(document), StandardCharsets.UTF_8);
+        AtomicFileWriter.writeString(output, ChangelogDocument.toPrettyJson(document), StandardCharsets.UTF_8);
     }
 
     private Path resolveImportPath() {
@@ -2189,6 +2212,7 @@ public class CommandDeckEditorScreen extends Screen {
             entry.date = entryData.date;
             entry.title = entryData.title;
             entry.types = new ArrayList<>(entryData.types);
+            entry.allowEmptyTypes = entry.types.isEmpty();
             entry.tags = new ArrayList<>(entryData.tags);
             entry.color = entryData.accent;
             for (ChangeNode node : entryData.changes) {

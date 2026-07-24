@@ -96,11 +96,16 @@ public final class ChangeNode {
     }
 
     public static ChangeNode fromJson(JsonElement element) {
+        return fromJson(element, new ParseBudget(), 1);
+    }
+
+    private static ChangeNode fromJson(JsonElement element, ParseBudget budget, int depth) {
         if (element == null || element.isJsonNull()) {
             return null;
         }
 
         if (element.isJsonPrimitive()) {
+            budget.registerNode(depth);
             return bullet(element.getAsString());
         }
 
@@ -110,6 +115,7 @@ public final class ChangeNode {
 
         JsonObject object = element.getAsJsonObject();
         if (object.has("text") && object.get("text").isJsonPrimitive()) {
+            budget.registerNode(depth);
             return bullet(object.get("text").getAsString());
         }
 
@@ -117,14 +123,19 @@ public final class ChangeNode {
             return null;
         }
 
+        budget.registerNode(depth);
         List<ChangeNode> children = new ArrayList<>();
         if (object.has("children")) {
-            children.addAll(fromContainer(object.get("children")));
+            children.addAll(fromContainer(object.get("children"), budget, depth));
         }
         return heading(object.get("title").getAsString(), children);
     }
 
     public static List<ChangeNode> fromContainer(JsonElement element) {
+        return fromContainer(element, new ParseBudget(), 0);
+    }
+
+    private static List<ChangeNode> fromContainer(JsonElement element, ParseBudget budget, int parentDepth) {
         List<ChangeNode> nodes = new ArrayList<>();
         if (element == null || element.isJsonNull()) {
             return nodes;
@@ -132,7 +143,7 @@ public final class ChangeNode {
 
         if (element.isJsonArray()) {
             for (JsonElement childElement : element.getAsJsonArray()) {
-                ChangeNode child = fromJson(childElement);
+                ChangeNode child = fromJson(childElement, budget, parentDepth + 1);
                 if (child != null) {
                     nodes.add(child);
                 }
@@ -143,7 +154,7 @@ public final class ChangeNode {
         if (element.isJsonObject()) {
             JsonObject object = element.getAsJsonObject();
             if (object.has("title") || object.has("text")) {
-                ChangeNode node = fromJson(object);
+                ChangeNode node = fromJson(object, budget, parentDepth + 1);
                 if (node != null) {
                     nodes.add(node);
                 }
@@ -151,7 +162,9 @@ public final class ChangeNode {
             }
 
             for (var entry : object.entrySet()) {
-                nodes.add(heading(entry.getKey(), fromContainer(entry.getValue())));
+                int depth = parentDepth + 1;
+                budget.registerNode(depth);
+                nodes.add(heading(entry.getKey(), fromContainer(entry.getValue(), budget, depth)));
             }
         }
         return nodes;
@@ -159,5 +172,19 @@ public final class ChangeNode {
 
     public static List<ChangeNode> fromJsonArray(JsonArray array) {
         return fromContainer(array);
+    }
+
+    private static final class ParseBudget {
+        private int nodeCount;
+
+        private void registerNode(int depth) {
+            if (depth > ChangelogDataLimits.MAX_CHANGE_TREE_DEPTH) {
+                throw new IllegalArgumentException("Changelog change tree exceeds the maximum depth");
+            }
+            nodeCount++;
+            if (nodeCount > ChangelogDataLimits.MAX_CHANGE_TREE_NODES) {
+                throw new IllegalArgumentException("Changelog change tree exceeds the maximum node count");
+            }
+        }
     }
 }

@@ -1,5 +1,6 @@
 package com.mmyddd.mcmod.changelog.client.editor;
 
+import com.mmyddd.mcmod.changelog.client.ChangelogDocument;
 import com.mmyddd.mcmod.changelog.client.ChangelogUtils;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -308,8 +309,8 @@ public class EditorEntriesTab {
         markCommittedValue(titleBox);
 
         colorHexBox = new CommitOnBlurEditBox(font, 0, 0, 80, 16, Component.translatable("ctnhchangelog.editor.color"));
-        colorHexBox.setValue(String.format("#%06X", entry.color & 0x00FFFFFF));
-        colorHexBox.setMaxLength(7);
+        colorHexBox.setValue(ChangelogDocument.formatColor(entry.color));
+        colorHexBox.setMaxLength(9);
         setCommitAction(colorHexBox, this::applyColorFromHex);
         markCommittedValue(colorHexBox);
 
@@ -1472,9 +1473,9 @@ public class EditorEntriesTab {
                 entry.color | 0xFF000000,
                 newColor -> {
                     // 确定回调
-                    entry.color = newColor & 0x00FFFFFF;
+                    entry.color = (entry.color & 0xFF000000) | (newColor & 0x00FFFFFF);
                     if (colorHexBox != null) {
-                        colorHexBox.setValue(String.format("#%06X", entry.color));
+                        colorHexBox.setValue(ChangelogDocument.formatColor(entry.color));
                         markCommittedValue(colorHexBox);
                     }
                     closeColorPicker();
@@ -1555,21 +1556,8 @@ public class EditorEntriesTab {
         }
     }
 
-    /**
-     * 从十六进制字符串解析颜色值（仅 RGB，不含 alpha）
-     */
     private int parseHexColor(String hex) {
-        try {
-            String val = hex.trim();
-            if (val.startsWith("#")) {
-                val = val.substring(1);
-            }
-            if (val.length() == 6) {
-                return (int) Long.parseLong(val, 16);
-            }
-        } catch (Exception ignored) {
-        }
-        return 0xFFFFFF; // 默认白色
+        return ChangelogDocument.parseColor(hex);
     }
 
     /**

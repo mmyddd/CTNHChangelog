@@ -19,6 +19,7 @@ public final class ChangelogDocument {
     }
 
     public static Document parse(String json) {
+        ChangelogDataLimits.validateJsonPayload(json);
         return parseV2(JsonParser.parseString(json).getAsJsonObject());
     }
 
@@ -85,7 +86,7 @@ public final class ChangelogDocument {
         String title = stringValue(object, "title", "");
 
         List<String> types = stringList(object.get("types"));
-        if (types.isEmpty()) {
+        if (!object.has("types")) {
             types.add("patch");
         }
 
@@ -170,7 +171,9 @@ public final class ChangelogDocument {
     }
 
     public static String formatColor(int color) {
-        return String.format("#%06X", color & 0x00FFFFFF);
+        return (color >>> 24) == 0xFF
+                ? String.format("#%06X", color & 0x00FFFFFF)
+                : String.format("#%08X", color);
     }
 
     public static final class Document {

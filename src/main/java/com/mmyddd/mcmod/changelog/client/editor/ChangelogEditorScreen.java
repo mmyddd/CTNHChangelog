@@ -1,6 +1,7 @@
 package com.mmyddd.mcmod.changelog.client.editor;
 
 import com.mmyddd.mcmod.changelog.CTNHChangelog;
+import com.mmyddd.mcmod.changelog.client.AtomicFileWriter;
 import com.mmyddd.mcmod.changelog.client.ChangeNode;
 import com.mmyddd.mcmod.changelog.client.ChangelogDocument;
 import com.mmyddd.mcmod.changelog.client.ChangelogEntry;
@@ -12,6 +13,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraftforge.fml.loading.FMLPaths;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -287,12 +289,8 @@ public class ChangelogEditorScreen extends Screen {
 
     private void exportJson() {
         try {
-            Path outputDir = getGameDirectory().resolve("changelog_opt");
-            if (!Files.exists(outputDir)) {
-                Files.createDirectories(outputDir);
-            }
-            Path output = outputDir.resolve("changelog.json");
-            Files.writeString(output, buildJsonString(), StandardCharsets.UTF_8);
+            Path output = getGameDirectory().resolve("changelog_opt").resolve("changelog.json");
+            AtomicFileWriter.writeString(output, buildJsonString(), StandardCharsets.UTF_8);
             showToast(Component.translatable("ctnhchangelog.editor.exported").getString()
                     + ": changelog_opt/changelog.json");
         } catch (Exception e) {
@@ -306,8 +304,9 @@ public class ChangelogEditorScreen extends Screen {
             Path cacheDir = getGameDirectory().resolve(".cache");
             Path input = cacheDir.resolve(ChangelogEntry.getCacheFileNameForCurrentLanguage());
             if (Files.exists(input)) {
-                String json = Files.readString(input, StandardCharsets.UTF_8);
-                parseAndLoadJson(json);
+                try (InputStream inputStream = Files.newInputStream(input)) {
+                    parseAndLoadDocument(ChangelogJsonReader.read(inputStream));
+                }
                 showToast(Component.translatable("ctnhchangelog.editor.imported").getString());
             } else {
                 showToast(Component.translatable("ctnhchangelog.editor.import_not_found").getString()
@@ -324,7 +323,10 @@ public class ChangelogEditorScreen extends Screen {
     }
 
     private void parseAndLoadJson(String json) {
-        ChangelogDocument.Document document = ChangelogJsonReader.read(json);
+        parseAndLoadDocument(ChangelogJsonReader.read(json));
+    }
+
+    private void parseAndLoadDocument(ChangelogDocument.Document document) {
         entries.clear();
         for (ChangelogDocument.EntryData entryData : document.entries) {
             EditableEntry entry = new EditableEntry();
@@ -332,6 +334,7 @@ public class ChangelogEditorScreen extends Screen {
             entry.date = entryData.date;
             entry.title = entryData.title;
             entry.types = new ArrayList<>(entryData.types);
+            entry.allowEmptyTypes = entry.types.isEmpty();
             entry.tags = new ArrayList<>(entryData.tags);
             entry.color = entryData.accent;
             for (ChangeNode node : entryData.changes) {

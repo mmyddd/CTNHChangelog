@@ -173,7 +173,7 @@ public class ChangelogOverviewScreen extends Screen {
 
             for (int i = 0; i < footer.length(); i++) {
                 String ch = String.valueOf(footer.charAt(i));
-                float progress = (float) i / (float) (footer.length() - 1);
+                float progress = (float) i / (float) Math.max(1, footer.length() - 1);
                 int color = getGradientColor(progress);
                 graphics.drawString(this.font, ch, charX, footerY, color);
                 charX += this.font.width(ch);

@@ -43,7 +43,7 @@ public class VersionCheckService {
                 latestChangelogVersion = changelogVersion != null ? changelogVersion : "";
 
                 String currentVersion = Config.getModpackVersion();
-                hasUpdate = changelogVersion != null && !changelogVersion.equals(currentVersion);
+                hasUpdate = changelogVersion != null && ChangelogVersion.isNewer(changelogVersion, currentVersion);
             } catch (Exception e) {
                 CTNHChangelog.LOGGER.error("Failed to check for update", e);
                 hasUpdate = false;
@@ -61,7 +61,11 @@ public class VersionCheckService {
             CTNHChangelog.LOGGER.warn("No loaded changelog entries available for version check");
             return null;
         }
-        return ChangelogEntry.getAllEntries().get(0).getVersion();
+        return ChangelogEntry.getAllEntries().stream()
+                .map(ChangelogEntry::getVersion)
+                .filter(version -> version != null && !version.isBlank())
+                .max(ChangelogVersion::compare)
+                .orElse(null);
     }
 
     public static boolean hasUpdate() {

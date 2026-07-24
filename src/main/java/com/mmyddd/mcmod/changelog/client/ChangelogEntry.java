@@ -28,7 +28,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChangelogEntry {
     private static final int CONNECTION_TIMEOUT = 5000;
     private static final int READ_TIMEOUT = 10000;
-    private static final String NO_REMOTE_ETAG = "";
 
     private enum LoadSource {
         REMOTE,
@@ -255,7 +254,7 @@ public class ChangelogEntry {
         }
 
         if (forceRemoteValidation) {
-            CTNHChangelog.LOGGER.info("Manual refresh requested, bypassing fresh cache and checking remote ETag");
+            CTNHChangelog.LOGGER.info("Manual refresh requested, bypassing fresh cache and validating the remote changelog");
         }
         startLoadAfterConfig(forceRemoteValidation);
     }
@@ -336,132 +335,92 @@ public class ChangelogEntry {
     }
 
     private static LoadSource loadData(String remoteUrl, String language, boolean forceRemoteValidation) {
+        Path cacheFile = getCacheFile(language, remoteUrl);
         try {
             if (!forceRemoteValidation && loadFromCacheWhenFresh(language, remoteUrl)) {
                 return LoadSource.CACHE;
             }
 
-            String remoteETag = fetchRemoteETag(remoteUrl);
-
-            if (remoteETag == null) {
-                CTNHChangelog.LOGGER.warn("Failed to fetch remote ETag, checking cache...");
-
-                Path cacheFile = getCacheFile(language, remoteUrl);
-                if (Files.exists(cacheFile)) {
-                    CTNHChangelog.LOGGER.info("Using cached data due to remote unavailable");
-                    byte[] cachedData = Files.readAllBytes(cacheFile);
-                    return loadFromStream(new ByteArrayInputStream(cachedData)) ? LoadSource.CACHE : LoadSource.UNAVAILABLE;
-                } else {
-                    CTNHChangelog.LOGGER.warn("No cache available, falling back to local resources");
-                    return LoadSource.UNAVAILABLE;
-                }
+            String cachedETag = readCachedETag(getCacheETagFile(language, remoteUrl));
+            LoadSource remoteSource = downloadFromRemote(remoteUrl, cachedETag, language);
+            if (remoteSource != LoadSource.UNAVAILABLE) {
+                return remoteSource;
             }
 
-            if (remoteETag.isEmpty()) {
-                CTNHChangelog.LOGGER.info("Remote changelog has no ETag, refreshing cache with GET");
-                return downloadFromRemote(remoteUrl, null, language) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
+            if (loadCachedDocument(cacheFile)) {
+                CTNHChangelog.LOGGER.info("Using cached data because the remote changelog is unavailable");
+                return LoadSource.CACHE;
             }
-
-            CTNHChangelog.LOGGER.info("Remote ETag: {}", remoteETag);
-
-            Path cacheFile = getCacheFile(language, remoteUrl);
-            Path etagFile = getCacheETagFile(language, remoteUrl);
-
-            if (Files.exists(cacheFile) && Files.exists(etagFile)) {
-                byte[] cachedData = Files.readAllBytes(cacheFile);
-                String cachedETag = Files.readString(etagFile).trim();
-
-                CTNHChangelog.LOGGER.info("Cached ETag: {}", cachedETag);
-
-                if (remoteETag.equals(cachedETag)) {
-                    CTNHChangelog.LOGGER.info("Cache is valid, using cached data");
-                    boolean success = loadFromStream(new ByteArrayInputStream(cachedData));
-                    if (success) {
-                        refreshCacheTimestamp(cacheFile);
-                    }
-                    return success ? LoadSource.CACHE : LoadSource.UNAVAILABLE;
-                } else {
-                    CTNHChangelog.LOGGER.info("Cache ETag mismatch, need to refresh");
-                }
-            } else {
-                CTNHChangelog.LOGGER.info("Cache not found");
+        } catch (Exception exception) {
+            CTNHChangelog.LOGGER.error("Failed to load data: {}", exception.getMessage());
+            if (loadCachedDocument(cacheFile)) {
+                CTNHChangelog.LOGGER.info("Using cached data due to a remote loading error");
+                return LoadSource.CACHE;
             }
-
-            CTNHChangelog.LOGGER.info("Downloading from remote");
-            return downloadFromRemote(remoteUrl, remoteETag, language) ? LoadSource.REMOTE : LoadSource.UNAVAILABLE;
-
-        } catch (Exception e) {
-            CTNHChangelog.LOGGER.error("Failed to load data: {}", e.getMessage());
-
-            try {
-                Path cacheFile = getCacheFile(language, remoteUrl);
-                if (Files.exists(cacheFile)) {
-                    CTNHChangelog.LOGGER.info("Using cached data due to error");
-                    byte[] cachedData = Files.readAllBytes(cacheFile);
-                    return loadFromStream(new ByteArrayInputStream(cachedData)) ? LoadSource.CACHE : LoadSource.UNAVAILABLE;
-                }
-            } catch (Exception ex) {
-                CTNHChangelog.LOGGER.error("Failed to load cache on error recovery: {}", ex.getMessage());
-            }
-
-            return LoadSource.UNAVAILABLE;
         }
+
+        return LoadSource.UNAVAILABLE;
     }
 
-    private static boolean downloadFromRemote(String urlStr, String remoteETag, String language) {
-        CTNHChangelog.LOGGER.info("Downloading remote changelog for selected language: {}",
-                language);
+    private static LoadSource downloadFromRemote(String urlStr, String cachedETag, String language) {
+        CTNHChangelog.LOGGER.info("Downloading remote changelog for selected language: {}", language);
 
         HttpURLConnection connection = null;
         try {
-            // 使用 URI.create 替代已弃用的 new URL 构造函数
             URL url = URI.create(urlStr).toURL();
             connection = (HttpURLConnection) url.openConnection();
             connection.setRequestMethod("GET");
             connection.setConnectTimeout(CONNECTION_TIMEOUT);
             connection.setReadTimeout(READ_TIMEOUT);
             connection.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
+            if (cachedETag != null && !cachedETag.isBlank()) {
+                connection.setRequestProperty("If-None-Match", formatIfNoneMatch(cachedETag));
+            }
 
             int responseCode = connection.getResponseCode();
             CTNHChangelog.LOGGER.info("Remote server response code: {}", responseCode);
+            Path cacheFile = getCacheFile(language, urlStr);
 
-            if (responseCode != 200) {
-                return false;
-            }
-
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            try (InputStream is = connection.getInputStream()) {
-                byte[] buffer = new byte[8192];
-                int len;
-                while ((len = is.read(buffer)) != -1) {
-                    baos.write(buffer, 0, len);
+            if (responseCode == HttpURLConnection.HTTP_NOT_MODIFIED) {
+                if (loadCachedDocument(cacheFile)) {
+                    refreshCacheTimestamp(cacheFile);
+                    return LoadSource.CACHE;
                 }
+                CTNHChangelog.LOGGER.warn("Remote changelog returned 304 but the cached document is unavailable");
+                return LoadSource.UNAVAILABLE;
+            }
+            if (responseCode != HttpURLConnection.HTTP_OK) {
+                return LoadSource.UNAVAILABLE;
             }
 
-            byte[] data = baos.toByteArray();
+            ChangelogDataLimits.validateContentLength(connection.getContentLengthLong());
+            byte[] data;
+            try (InputStream input = connection.getInputStream()) {
+                data = ChangelogDataLimits.readDocument(input);
+            }
             CTNHChangelog.LOGGER.info("Downloaded {} bytes", data.length);
 
-            boolean success = loadFromStream(new ByteArrayInputStream(data));
+            if (!loadFromData(data)) {
+                return LoadSource.UNAVAILABLE;
+            }
 
-            if (success) {
-                Path cacheFile = getCacheFile(language, urlStr);
+            String responseETag = connection.getHeaderField("ETag");
+            try {
+                AtomicFileWriter.write(cacheFile, data);
                 Path etagFile = getCacheETagFile(language, urlStr);
-
-                Files.write(cacheFile, data);
-                if (remoteETag != null && !remoteETag.isEmpty()) {
-                    Files.writeString(etagFile, remoteETag);
+                if (responseETag != null && !responseETag.isBlank()) {
+                    AtomicFileWriter.writeString(etagFile, responseETag.trim(), StandardCharsets.UTF_8);
                 } else {
                     Files.deleteIfExists(etagFile);
                 }
-
-                CTNHChangelog.LOGGER.info("Successfully downloaded and cached changelog with ETag: {}", remoteETag);
+                CTNHChangelog.LOGGER.info("Successfully downloaded and cached changelog with ETag: {}", responseETag);
+            } catch (Exception exception) {
+                CTNHChangelog.LOGGER.warn("Loaded remote changelog but could not update its cache: {}", exception.getMessage());
             }
-
-            return success;
-
-        } catch (Exception e) {
-            CTNHChangelog.LOGGER.error("Failed to download from remote: {}", e.getMessage());
-            return false;
+            return LoadSource.REMOTE;
+        } catch (Exception exception) {
+            CTNHChangelog.LOGGER.error("Failed to download from remote: {}", exception.getMessage());
+            return LoadSource.UNAVAILABLE;
         } finally {
             if (connection != null) {
                 connection.disconnect();
@@ -469,31 +428,24 @@ public class ChangelogEntry {
         }
     }
 
-    private static String fetchRemoteETag(String urlStr) throws Exception {
-        HttpURLConnection connection = null;
-        try {
-            // 使用 URI.create 替代已弃用的 new URL 构造函数
-            URL url = URI.create(urlStr).toURL();
-            connection = (HttpURLConnection) url.openConnection();
-            connection.setRequestMethod("HEAD");
-            connection.setConnectTimeout(CONNECTION_TIMEOUT);
-            connection.setReadTimeout(READ_TIMEOUT);
-            connection.setRequestProperty("User-Agent", "CTNH-Changelog/1.0");
+    private static String formatIfNoneMatch(String cachedETag) {
+        String normalized = cachedETag.trim();
+        if (normalized.startsWith("\"") || normalized.startsWith("W/\"")) {
+            return normalized;
+        }
+        return "\"" + normalized.replace("\"", "") + "\"";
+    }
 
-            int responseCode = connection.getResponseCode();
-            if (responseCode != 200) {
+    private static String readCachedETag(Path etagFile) {
+        try {
+            if (!Files.isRegularFile(etagFile) || Files.size(etagFile) > 8_192) {
                 return null;
             }
-
-            String etag = connection.getHeaderField("ETag");
-            if (etag != null) {
-                return etag.replace("\"", "").replace("W/", "").trim();
-            }
-            return NO_REMOTE_ETAG;
-        } finally {
-            if (connection != null) {
-                connection.disconnect();
-            }
+            String etag = Files.readString(etagFile, StandardCharsets.UTF_8).trim();
+            return etag.isEmpty() ? null : etag;
+        } catch (Exception exception) {
+            CTNHChangelog.LOGGER.warn("Failed to read cached changelog ETag: {}", exception.getMessage());
+            return null;
         }
     }
 
@@ -540,19 +492,26 @@ public class ChangelogEntry {
         return getCacheDirectory().resolve(getCacheFileName(language, remoteUrl) + ".etag");
     }
 
+    private static boolean loadCachedDocument(Path cacheFile) {
+        if (!Files.isRegularFile(cacheFile)) {
+            return false;
+        }
+        try (InputStream input = Files.newInputStream(cacheFile)) {
+            return loadFromStream(input);
+        } catch (Exception exception) {
+            CTNHChangelog.LOGGER.warn("Failed to load changelog cache: {}", exception.getMessage());
+            return false;
+        }
+    }
+
     private static boolean loadFromCacheWhenFresh(String language, String remoteUrl) {
         Path cacheFile = getCacheFile(language, remoteUrl);
-        if (isCacheFresh(language, remoteUrl)) {
-            try {
-                CTNHChangelog.LOGGER.info("Using fresh changelog cache");
-                byte[] cachedData = Files.readAllBytes(cacheFile);
-                return loadFromStream(new ByteArrayInputStream(cachedData));
-            } catch (Exception e) {
-                CTNHChangelog.LOGGER.warn("Failed to load fresh cache, checking remote instead: {}", e.getMessage());
-                return false;
-            }
+        if (!isCacheFresh(language, remoteUrl)) {
+            return false;
         }
-        return false;
+
+        CTNHChangelog.LOGGER.info("Using fresh changelog cache");
+        return loadCachedDocument(cacheFile);
     }
 
     private static void refreshCacheTimestamp(Path cacheFile) {
@@ -646,9 +605,19 @@ public class ChangelogEntry {
         return new String[]{"/changelog.json", "/changelog_en.json"};
     }
 
-    private static boolean loadFromStream(InputStream is) {
-        try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
-            JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+    private static boolean loadFromStream(InputStream input) {
+        try {
+            return loadFromData(ChangelogDataLimits.readDocument(input));
+        } catch (Exception exception) {
+            CTNHChangelog.LOGGER.error("Failed to parse changelog JSON", exception);
+            return false;
+        }
+    }
+
+    private static boolean loadFromData(byte[] data) {
+        try {
+            ChangelogDataLimits.validateJsonPayload(data);
+            JsonObject root = JsonParser.parseString(new String(data, StandardCharsets.UTF_8)).getAsJsonObject();
             ChangelogDocument.Document document = ChangelogJsonReader.read(root);
 
             footerText = document.footer;
@@ -667,11 +636,10 @@ public class ChangelogEntry {
                 ));
             }
 
-            // 使用不可变列表包装，保证线程安全的同时防止外部修改
             ALL_ENTRIES = Collections.unmodifiableList(entries);
             return true;
-        } catch (Exception e) {
-            CTNHChangelog.LOGGER.error("Failed to parse changelog JSON", e);
+        } catch (Exception exception) {
+            CTNHChangelog.LOGGER.error("Failed to parse changelog JSON", exception);
             return false;
         }
     }
