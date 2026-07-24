@@ -26,7 +26,7 @@ public class EditorFooterTab {
         this.areaBottom = screen.getScreenHeight() - 10;
 
         // 创建 Footer Text 输入框
-        this.footerEditBox = new EditBox(
+        this.footerEditBox = new CommitOnBlurEditBox(
                 screen.getScreenFont(),
                 20,
                 areaTop + 26,
@@ -40,6 +40,8 @@ public class EditorFooterTab {
         if (footerText != null) {
             this.footerEditBox.setValue(footerText);
         }
+        setCommitAction(this.footerEditBox, this::syncToData);
+        markCommittedValue(this.footerEditBox);
 
         // 注册到屏幕
         screen.addWidgetToScreen(this.footerEditBox);
@@ -50,9 +52,26 @@ public class EditorFooterTab {
      */
     public void removeWidgets(ChangelogEditorScreen screen) {
         if (this.footerEditBox != null) {
-            // 同步值回编辑器
-            editor.setFooterText(this.footerEditBox.getValue());
+            syncToData();
             screen.removeWidgetFromScreen(this.footerEditBox);
+        }
+    }
+
+    private void syncToData() {
+        if (this.footerEditBox != null) {
+            editor.setFooterText(this.footerEditBox.getValue());
+        }
+    }
+
+    private void setCommitAction(EditBox box, Runnable action) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.setCommitAction(action);
+        }
+    }
+
+    private void markCommittedValue(EditBox box) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.markCommittedValue();
         }
     }
 

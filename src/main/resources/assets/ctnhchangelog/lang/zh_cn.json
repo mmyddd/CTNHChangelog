@@ -32,6 +32,8 @@
   "ctnhchangelog.editor.export": "导出",
   "ctnhchangelog.editor.close": "关闭",
   "ctnhchangelog.editor.new_entry": "新增条目",
+  "ctnhchangelog.editor.ctnh_template": "CTNH模板",
+  "ctnhchangelog.editor.ctnh_template_added": "已添加 CTNH 模板",
   "ctnhchangelog.editor.delete": "删除",
   "ctnhchangelog.editor.add_tag": "添加标签",
   "ctnhchangelog.editor.add_change": "添加变更",

@@ -32,6 +32,8 @@
   "ctnhchangelog.editor.export": "Export",
   "ctnhchangelog.editor.close": "Close",
   "ctnhchangelog.editor.new_entry": "New Entry",
+  "ctnhchangelog.editor.ctnh_template": "CTNH Template",
+  "ctnhchangelog.editor.ctnh_template_added": "CTNH template added",
   "ctnhchangelog.editor.delete": "Delete",
   "ctnhchangelog.editor.add_tag": "Add Tag",
   "ctnhchangelog.editor.add_change": "Add Change",

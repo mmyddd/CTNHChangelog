@@ -184,6 +184,8 @@ public class ChangelogEditorScreen extends Screen {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         // 颜色选择器优先处理（通过 mouseClicked 内部检测）
 
+        commitFocusedTextInputOutside(mouseX, mouseY);
+
         if (super.mouseClicked(mouseX, mouseY, button)) return true;
 
         return switch (currentTab) {
@@ -192,6 +194,32 @@ public class ChangelogEditorScreen extends Screen {
             case 2 -> footerTab.mouseClicked(mouseX, mouseY, button);
             default -> false;
         };
+    }
+
+    private void commitFocusedTextInputOutside(double mouseX, double mouseY) {
+        if ((currentTab == 0 && entriesTab.hasOpenColorPicker())
+                || (currentTab == 1 && tagsTab.hasOpenColorPicker())) {
+            return;
+        }
+        if (isButtonAt(mouseX, mouseY)) {
+            return;
+        }
+        if (getFocused() instanceof CommitOnBlurEditBox box && !box.isMouseOver(mouseX, mouseY)) {
+            box.commit();
+            if (getFocused() == box) {
+                setFocused(null);
+            }
+        }
+    }
+
+    private boolean isButtonAt(double mouseX, double mouseY) {
+        for (var child : children()) {
+            if (child instanceof Button button && button.visible && button.active
+                    && button.isMouseOver(mouseX, mouseY)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

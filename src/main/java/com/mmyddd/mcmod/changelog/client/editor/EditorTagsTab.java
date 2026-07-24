@@ -70,34 +70,40 @@ public class EditorTagsTab {
             int y = areaTop + 25 + i * ROW_HEIGHT - (int) scrollAmount;
 
             // 标签名输入框
-            EditBox nameBox = new EditBox(
+            EditBox nameBox = new CommitOnBlurEditBox(
                     screen.getScreenFont(), MARGIN, y, 180, 20,
                     Component.literal("Tag Name")
             );
             nameBox.setValue(tagNames.get(i));
             nameBox.setBordered(true);
+            setCommitAction(nameBox, this::syncToData);
+            markCommittedValue(nameBox);
             screen.addWidgetToScreen(nameBox);
             tagNameBoxes.add(nameBox);
 
             // 颜色值输入框
-            EditBox colorBox = new EditBox(
+            EditBox colorBox = new CommitOnBlurEditBox(
                     screen.getScreenFont(), MARGIN + 210 + 24, y, 100, 20,
                     Component.literal("Tag Color")
             );
             colorBox.setValue(String.format("#%06X", colorValues.get(i) & 0x00FFFFFF));
             colorBox.setBordered(true);
+            setCommitAction(colorBox, this::syncToData);
+            markCommittedValue(colorBox);
             screen.addWidgetToScreen(colorBox);
             tagColorBoxes.add(colorBox);
         }
 
         // 新标签输入框
         int newY = areaTop + 25 + tagNames.size() * ROW_HEIGHT - (int) scrollAmount;
-        newTagBox = new EditBox(
+        newTagBox = new CommitOnBlurEditBox(
                 screen.getScreenFont(), MARGIN, newY, 180, 20,
                 Component.literal("New Tag")
         );
         newTagBox.setHint(Component.literal("New tag name"));
         newTagBox.setBordered(true);
+        setCommitAction(newTagBox, this::addTagColor);
+        markCommittedValue(newTagBox);
         screen.addWidgetToScreen(newTagBox);
 
         // 添加标签按钮
@@ -339,6 +345,10 @@ public class EditorTagsTab {
         return false;
     }
 
+    public boolean hasOpenColorPicker() {
+        return colorPicker != null;
+    }
+
     /**
      * 处理按键事件。
      */
@@ -346,7 +356,6 @@ public class EditorTagsTab {
         // 如果颜色选择器打开，处理 hex 输入
         if (colorPicker != null && colorPicker.getHexInput() != null) {
             if (colorPicker.getHexInput().keyPressed(keyCode, scanCode, modifiers)) {
-                colorPicker.applyHexInput();
                 return true;
             }
         }
@@ -383,13 +392,14 @@ public class EditorTagsTab {
                             if (colorPickerTargetIndex < tagColorBoxes.size()) {
                                 tagColorBoxes.get(colorPickerTargetIndex)
                                         .setValue(String.format("#%06X", newColor & 0x00FFFFFF));
+                                markCommittedValue(tagColorBoxes.get(colorPickerTargetIndex));
                             }
                         }
                     }
                     closeColorPicker();
                 },
                 // 取消回调
-                this::closeColorPicker
+                () -> closeColorPicker(true)
         );
 
         colorPicker.init(editor.getScreenFont(), colorPickerX, colorPickerY);
@@ -405,10 +415,17 @@ public class EditorTagsTab {
      * 关闭颜色选择器。
      */
     private void closeColorPicker() {
+        closeColorPicker(false);
+    }
+
+    private void closeColorPicker(boolean discardHexInput) {
         if (colorPicker != null) {
             // 从 Screen 移除 Hex 输入框
             EditBox hexInput = colorPicker.getHexInput();
             if (hexInput != null) {
+                if (discardHexInput) {
+                    markCommittedValue(hexInput);
+                }
                 editor.removeWidgetFromScreen(hexInput);
             }
             colorPicker.close();
@@ -520,6 +537,18 @@ public class EditorTagsTab {
 
         // 重新创建 widgets
         addWidgets(editor);
+    }
+
+    private void setCommitAction(EditBox box, Runnable action) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.setCommitAction(action);
+        }
+    }
+
+    private void markCommittedValue(EditBox box) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.markCommittedValue();
+        }
     }
 
     /**

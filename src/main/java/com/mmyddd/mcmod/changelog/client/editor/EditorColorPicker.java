@@ -60,10 +60,14 @@ public class EditorColorPicker {
     public void init(Font font, int x, int y) {
         int hexX = x + SQ_SIZE + HUE_BAR_W + 8;
         int hexY = y + SQ_SIZE + 8;
-        hexInput = new EditBox(font, hexX, hexY, 64, 16,
+        hexInput = new CommitOnBlurEditBox(font, hexX, hexY, 64, 16,
                 net.minecraft.network.chat.Component.literal("Hex"));
         hexInput.setValue(String.format("#%06X", toARGB() & 0x00FFFFFF));
         hexInput.setMaxLength(9);
+        if (hexInput instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.setCommitAction(this::applyHexInput);
+            commitBox.markCommittedValue();
+        }
     }
 
     public void render(GuiGraphics graphics, Font font, int x, int y, int mouseX, int mouseY) {
@@ -237,6 +241,9 @@ public class EditorColorPicker {
     private void updateHexInput() {
         if (hexInput != null) {
             hexInput.setValue(String.format("#%06X", toARGB() & 0x00FFFFFF));
+            if (hexInput instanceof CommitOnBlurEditBox commitBox) {
+                commitBox.markCommittedValue();
+            }
         }
     }
 
@@ -252,6 +259,9 @@ public class EditorColorPicker {
                 setFromARGB(0xFF000000 | rgb);
             }
         } catch (Exception ignored) {
+        }
+        if (hexInput instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.markCommittedValue();
         }
     }
 

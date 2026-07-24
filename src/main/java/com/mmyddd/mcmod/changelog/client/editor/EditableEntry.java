@@ -21,6 +21,7 @@ public class EditableEntry {
     public List<EditableChangeNode> changeTree;
     /** Kept as a compatibility view for the old tab class while it is being replaced. */
     public List<String> changes;
+    public boolean allowEmptyTypes;
 
     public EditableEntry() {
         this.version = "1.0.0";
@@ -45,6 +46,7 @@ public class EditableEntry {
             this.changeTree.add(node.copy());
         }
         this.changes = new ArrayList<>(other.changes);
+        this.allowEmptyTypes = other.allowEmptyTypes;
     }
 
     public static EditableEntry fromChangelogEntry(ChangelogEntry entry) {

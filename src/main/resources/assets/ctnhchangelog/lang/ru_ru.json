@@ -32,6 +32,8 @@
   "ctnhchangelog.editor.export": "Экспорт",
   "ctnhchangelog.editor.close": "Закрыть",
   "ctnhchangelog.editor.new_entry": "Новая запись",
+  "ctnhchangelog.editor.ctnh_template": "Шаблон CTNH",
+  "ctnhchangelog.editor.ctnh_template_added": "Шаблон CTNH добавлен",
   "ctnhchangelog.editor.delete": "Удалить",
   "ctnhchangelog.editor.add_tag": "Добавить тег",
   "ctnhchangelog.editor.add_change": "Добавить изменение",

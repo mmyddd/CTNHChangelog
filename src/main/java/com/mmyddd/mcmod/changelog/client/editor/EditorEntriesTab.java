@@ -289,27 +289,39 @@ public class EditorEntriesTab {
         EditableEntry entry = editor.getEntries().get(selectedIndex);
         Font font = editor.getScreenFont();
 
-        versionBox = new EditBox(font, 0, 0, 120, 16, Component.translatable("ctnhchangelog.editor.version"));
+        versionBox = new CommitOnBlurEditBox(font, 0, 0, 120, 16, Component.translatable("ctnhchangelog.editor.version"));
         versionBox.setValue(entry.version);
         versionBox.setMaxLength(32);
+        setCommitAction(versionBox, this::syncDetailToEntry);
+        markCommittedValue(versionBox);
 
-        dateBox = new EditBox(font, 0, 0, 120, 16, Component.translatable("ctnhchangelog.editor.date"));
+        dateBox = new CommitOnBlurEditBox(font, 0, 0, 120, 16, Component.translatable("ctnhchangelog.editor.date"));
         dateBox.setValue(entry.date != null ? entry.date : "");
         dateBox.setMaxLength(32);
+        setCommitAction(dateBox, this::syncDetailToEntry);
+        markCommittedValue(dateBox);
 
-        titleBox = new EditBox(font, 0, 0, 200, 16, Component.translatable("ctnhchangelog.editor.title_field"));
+        titleBox = new CommitOnBlurEditBox(font, 0, 0, 200, 16, Component.translatable("ctnhchangelog.editor.title_field"));
         titleBox.setValue(entry.title != null ? entry.title : "");
         titleBox.setMaxLength(128);
+        setCommitAction(titleBox, this::syncDetailToEntry);
+        markCommittedValue(titleBox);
 
-        colorHexBox = new EditBox(font, 0, 0, 80, 16, Component.translatable("ctnhchangelog.editor.color"));
+        colorHexBox = new CommitOnBlurEditBox(font, 0, 0, 80, 16, Component.translatable("ctnhchangelog.editor.color"));
         colorHexBox.setValue(String.format("#%06X", entry.color & 0x00FFFFFF));
         colorHexBox.setMaxLength(7);
+        setCommitAction(colorHexBox, this::applyColorFromHex);
+        markCommittedValue(colorHexBox);
 
-        newChangeBox = new EditBox(font, 0, 0, 200, 16, Component.translatable("ctnhchangelog.editor.new_change_placeholder"));
+        newChangeBox = new CommitOnBlurEditBox(font, 0, 0, 200, 16, Component.translatable("ctnhchangelog.editor.new_change_placeholder"));
         newChangeBox.setMaxLength(256);
+        setCommitAction(newChangeBox, this::addChange);
+        markCommittedValue(newChangeBox);
 
-        editChangeBox = new EditBox(font, 0, 0, 200, 16, Component.translatable("ctnhchangelog.editor.edit_change_placeholder"));
+        editChangeBox = new CommitOnBlurEditBox(font, 0, 0, 200, 16, Component.translatable("ctnhchangelog.editor.edit_change_placeholder"));
         editChangeBox.setMaxLength(256);
+        setCommitAction(editChangeBox, this::confirmEditChange);
+        markCommittedValue(editChangeBox);
         editChangeBox.visible = false;
         editChangeBox.active = false;
 
@@ -1235,6 +1247,10 @@ public class EditorEntriesTab {
         return false; // EditBox 通过 widget 系统自动处理
     }
 
+    public boolean hasOpenColorPicker() {
+        return showColorPicker && colorPicker != null;
+    }
+
     /**
      * 按键事件处理
      */
@@ -1242,7 +1258,7 @@ public class EditorEntriesTab {
         // 颜色选择器打开时，ESC 关闭
         if (showColorPicker) {
             if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
-                closeColorPicker();
+                closeColorPicker(true);
                 return true;
             }
             return false;
@@ -1385,6 +1401,7 @@ public class EditorEntriesTab {
         editingChangeIndex = index;
         if (editChangeBox != null) {
             editChangeBox.setValue(entry.changes.get(index));
+            markCommittedValue(editChangeBox);
             editChangeBox.setCursorPosition(0);
             editChangeBox.setFocused(true);
             editChangeBox.visible = true;
@@ -1406,6 +1423,7 @@ public class EditorEntriesTab {
                 entry.changes.set(editingChangeIndex, newValue);
             }
         }
+        markCommittedValue(editChangeBox);
         exitEditChange();
     }
 
@@ -1424,6 +1442,7 @@ public class EditorEntriesTab {
         if (editChangeBox != null) {
             editChangeBox.visible = false;
             editChangeBox.active = false;
+            markCommittedValue(editChangeBox);
             editChangeBox.setFocused(false);
         }
     }
@@ -1456,10 +1475,11 @@ public class EditorEntriesTab {
                     entry.color = newColor & 0x00FFFFFF;
                     if (colorHexBox != null) {
                         colorHexBox.setValue(String.format("#%06X", entry.color));
+                        markCommittedValue(colorHexBox);
                     }
                     closeColorPicker();
                 },
-                this::closeColorPicker // 取消回调
+                () -> closeColorPicker(true) // 取消回调
         );
 
         // 计算弹窗位置（居中）
@@ -1481,9 +1501,16 @@ public class EditorEntriesTab {
      * 关闭颜色选择器
      */
     private void closeColorPicker() {
+        closeColorPicker(false);
+    }
+
+    private void closeColorPicker(boolean discardHexInput) {
         if (colorPicker != null) {
             EditBox hexInput = colorPicker.getHexInput();
             if (hexInput != null) {
+                if (discardHexInput) {
+                    markCommittedValue(hexInput);
+                }
                 editor.removeWidgetFromScreen(hexInput);
             }
             colorPicker.close();
@@ -1512,6 +1539,19 @@ public class EditorEntriesTab {
         }
         if (colorHexBox != null) {
             entry.color = parseHexColor(colorHexBox.getValue());
+            markCommittedValue(colorHexBox);
+        }
+    }
+
+    private void setCommitAction(EditBox box, Runnable action) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.setCommitAction(action);
+        }
+    }
+
+    private void markCommittedValue(EditBox box) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.markCommittedValue();
         }
     }
 
@@ -1541,6 +1581,7 @@ public class EditorEntriesTab {
 
         EditableEntry entry = editor.getEntries().get(selectedIndex);
         entry.color = parseHexColor(colorHexBox.getValue());
+        markCommittedValue(colorHexBox);
     }
 
     /**

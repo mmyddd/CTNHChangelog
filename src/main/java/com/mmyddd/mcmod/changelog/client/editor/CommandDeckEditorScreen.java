@@ -46,6 +46,10 @@ public class CommandDeckEditorScreen extends Screen {
     private static final int TREE_TOOLBAR_Y = 146;
     private static final int TREE_TOP = 174;
     private static final String[] TYPE_OPTIONS = {"major", "minor", "patch", "hotfix", "danger"};
+    private static final String[] CTNH_TEMPLATE_HEADINGS = {
+            "占位符", "模组改动", "整合包改动", "GTM", "CTNH-Core",
+            "CTNH-Mana", "CTNH-Bio", "CTNH-Energy", "CTPP"
+    };
     private static final int ENTRY_TAG_ROW_HEIGHT = 20;
     private static final int ENTRY_TAG_HEIGHT = 18;
     private static final int TAG_DROPDOWN_GAP = 4;
@@ -91,6 +95,7 @@ public class CommandDeckEditorScreen extends Screen {
     private final List<Integer> entryButtonEntryIndices = new ArrayList<>();
     private String cachedSearch = "";
     private EditableEntry boundEntry;
+    private boolean loadingSelectedFields;
     private EditableChangeNode editingNode;
     private final List<Integer> editingNodePath = new ArrayList<>();
     private boolean dataInitialized;
@@ -181,6 +186,9 @@ public class CommandDeckEditorScreen extends Screen {
                 refreshEntryButtons();
             }
         });
+        setCommitAction(searchBox, () -> {
+        });
+        markCommittedValue(searchBox);
         this.addRenderableWidget(searchBox);
 
         int fieldX = centerLeft + 74;
@@ -192,6 +200,15 @@ public class CommandDeckEditorScreen extends Screen {
         versionBox.setMaxLength(64);
         dateBox.setMaxLength(64);
         titleBox.setMaxLength(180);
+        versionBox.setResponder(this::handleEntryFieldChanged);
+        dateBox.setResponder(this::handleEntryFieldChanged);
+        titleBox.setResponder(this::handleEntryFieldChanged);
+        setCommitAction(versionBox, this::commitEntryFields);
+        setCommitAction(dateBox, this::commitEntryFields);
+        setCommitAction(titleBox, this::commitEntryFields);
+        markCommittedValue(versionBox);
+        markCommittedValue(dateBox);
+        markCommittedValue(titleBox);
         this.addRenderableWidget(versionBox);
         this.addRenderableWidget(dateBox);
         this.addRenderableWidget(titleBox);
@@ -206,6 +223,10 @@ public class CommandDeckEditorScreen extends Screen {
                 commandDeckText("footer_placeholder").getString());
         accentBox.setMaxLength(16);
         footerBox.setMaxLength(500);
+        setCommitAction(accentBox, this::commitInspectorFields);
+        setCommitAction(footerBox, this::commitInspectorFields);
+        markCommittedValue(accentBox);
+        markCommittedValue(footerBox);
         this.addRenderableWidget(accentBox);
         this.addRenderableWidget(footerBox);
 
@@ -220,10 +241,36 @@ public class CommandDeckEditorScreen extends Screen {
     }
 
     private EditBox createBox(int x, int y, int width, String hint) {
-        EditBox box = new EditBox(this.font, x, y, width, 20, Component.literal(hint));
+        EditBox box = new CommitOnBlurEditBox(this.font, x, y, width, 20, Component.literal(hint));
         box.setHint(Component.literal(hint));
         box.setBordered(true);
         return box;
+    }
+
+    private void setCommitAction(EditBox box, Runnable action) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.setCommitAction(action);
+        }
+    }
+
+    private void markCommittedValue(EditBox box) {
+        if (box instanceof CommitOnBlurEditBox commitBox) {
+            commitBox.markCommittedValue();
+        }
+    }
+
+    private void commitEntryFields() {
+        if (!loadingSelectedFields && selectedEntry() != null) {
+            syncFields();
+        }
+    }
+
+    private void commitInspectorFields() {
+        if (loadingSelectedFields) {
+            return;
+        }
+        syncFields();
+        updateInspectorLayout();
     }
 
     private Component commandDeckText(String key, Object... arguments) {
@@ -319,9 +366,13 @@ public class CommandDeckEditorScreen extends Screen {
                     commandDeckText("tag_name").getString());
             nameBox.setValue(entry.getKey());
             nameBox.setMaxLength(64);
+            setCommitAction(nameBox, this::commitInspectorFields);
+            markCommittedValue(nameBox);
             EditBox colorBox = createBox(rightLeft + 118, y, 60, "#888888");
             colorBox.setValue(ChangelogDocument.formatColor(entry.getValue()));
             colorBox.setMaxLength(9);
+            setCommitAction(colorBox, this::commitInspectorFields);
+            markCommittedValue(colorBox);
             Button deleteButton = Button.builder(Component.literal("X"), button -> removeTagColor(rowIndex))
                     .bounds(rightLeft + 184, y, 26, 20).build();
 
@@ -339,6 +390,8 @@ public class CommandDeckEditorScreen extends Screen {
                 commandDeckText("new_tag").getString());
         newTagBox.setHint(commandDeckText("new_tag_name"));
         newTagBox.setMaxLength(64);
+        setCommitAction(newTagBox, this::addTagColor);
+        markCommittedValue(newTagBox);
         addTagButton = Button.builder(commandDeckText("add"), button -> addTagColor())
                 .bounds(rightLeft + 148, newY, 62, 20).build();
         this.addRenderableWidget(newTagBox);
@@ -535,10 +588,11 @@ public class CommandDeckEditorScreen extends Screen {
                     tagColors.put(tagName, newColor);
                     if (index < tagColorBoxes.size()) {
                         tagColorBoxes.get(index).setValue(ChangelogDocument.formatColor(newColor));
+                        markCommittedValue(tagColorBoxes.get(index));
                     }
                     closeTagColorPicker();
                 },
-                this::closeTagColorPicker
+                () -> closeTagColorPicker(true)
         );
         tagColorPickerX = (this.width - EditorColorPicker.PICKER_W) / 2;
         tagColorPickerY = Math.max(10, (this.height - EditorColorPicker.PICKER_H) / 2);
@@ -549,11 +603,19 @@ public class CommandDeckEditorScreen extends Screen {
     }
 
     private void closeTagColorPicker() {
+        closeTagColorPicker(false);
+    }
+
+    private void closeTagColorPicker(boolean discardHexInput) {
         if (tagColorPicker == null) {
             return;
         }
-        if (tagColorPicker.getHexInput() != null) {
-            removeWidget(tagColorPicker.getHexInput());
+        EditBox hexInput = tagColorPicker.getHexInput();
+        if (hexInput != null) {
+            if (discardHexInput) {
+                markCommittedValue(hexInput);
+            }
+            removeWidget(hexInput);
         }
         tagColorPicker.close();
         tagColorPicker = null;
@@ -595,10 +657,12 @@ public class CommandDeckEditorScreen extends Screen {
 
         addRenderableWidget(Button.builder(Component.translatable("ctnhchangelog.editor.new_entry"), b -> addEntry())
                 .bounds(left + 8, bottom - 16, 68, 16).build());
+        addRenderableWidget(Button.builder(Component.translatable("ctnhchangelog.editor.ctnh_template"), b -> addCtnhTemplateEntry())
+                .bounds(left + 80, bottom - 16, 76, 16).build());
         addRenderableWidget(Button.builder(Component.literal("↑"), b -> moveEntry(-1))
-                .bounds(left + 80, bottom - 16, 24, 16).build());
+                .bounds(leftRight - 62, bottom - 36, 24, 16).build());
         addRenderableWidget(Button.builder(Component.literal("↓"), b -> moveEntry(1))
-                .bounds(left + 108, bottom - 16, 24, 16).build());
+                .bounds(leftRight - 34, bottom - 36, 24, 16).build());
         addRenderableWidget(Button.builder(Component.translatable("ctnhchangelog.editor.delete"), b -> deleteEntry())
                 .bounds(leftRight - 62, bottom - 16, 54, 16).build());
     }
@@ -632,7 +696,7 @@ public class CommandDeckEditorScreen extends Screen {
             if (!matchesSearch(entry, query)) {
                 continue;
             }
-            if (ENTRY_LIST_TOP + row * 25 >= bottom - 22) {
+            if (ENTRY_LIST_TOP + row * 25 >= bottom - 42) {
                 break;
             }
             final int entryIndex = index;
@@ -679,7 +743,7 @@ public class CommandDeckEditorScreen extends Screen {
 
     private boolean handleEntryRailClick(double mouseX, double mouseY, int button) {
         if (button != 0 || mouseX < left + 8 || mouseX > leftRight - 8
-                || mouseY < ENTRY_LIST_TOP || mouseY >= bottom - 22) {
+                || mouseY < ENTRY_LIST_TOP || mouseY >= bottom - 42) {
             return false;
         }
         int row = (int) ((mouseY - ENTRY_LIST_TOP) / 25);
@@ -687,11 +751,15 @@ public class CommandDeckEditorScreen extends Screen {
             return false;
         }
         int entryIndex = entryButtonEntryIndices.get(row);
+        Button clickedButton = row < entryButtons.size() ? entryButtons.get(row) : null;
         long now = System.currentTimeMillis();
         boolean doubleClick = entryIndex == lastEntryClickIndex
                 && now - lastEntryClickTime < DOUBLE_CLICK_MS;
         lastEntryClickIndex = entryIndex;
         lastEntryClickTime = now;
+        if (clickedButton != null) {
+            setFocused(clickedButton);
+        }
         selectEntry(entryIndex);
         if (doubleClick) {
             focusTitleEditor();
@@ -709,7 +777,7 @@ public class CommandDeckEditorScreen extends Screen {
         if (titleBox == null) {
             return;
         }
-        titleBox.setFocused(true);
+        setFocused(titleBox);
         titleBox.setCursorPosition(titleBox.getValue().length());
         titleBox.setHighlightPos(titleBox.getValue().length());
     }
@@ -769,7 +837,9 @@ public class CommandDeckEditorScreen extends Screen {
     }
 
     private void loadSelectedFields() {
+        loadingSelectedFields = true;
         EditableEntry entry = selectedEntry();
+        updateEntryFieldHints(entry);
         if (entry == null) {
             setBoxValue(versionBox, "");
             setBoxValue(dateBox, "");
@@ -784,17 +854,41 @@ public class CommandDeckEditorScreen extends Screen {
             setBoxValue(titleBox, entry.title);
             setTypeCheckboxes(entry.types);
             setBoxValue(tagsBox, String.join(", ", entry.tags));
-            setBoxValue(accentBox, ChangelogDocument.formatColor(entry.color));
+            setBoxValue(accentBox, entry.allowEmptyTypes ? "" : ChangelogDocument.formatColor(entry.color));
             boundEntry = entry;
         }
         setBoxValue(footerBox, footerText);
         updateInspectorLayout();
+        loadingSelectedFields = false;
+    }
+
+    private void updateEntryFieldHints(EditableEntry entry) {
+        boolean hasSelection = entry != null;
+        setBoxHint(versionBox, hasSelection ? "" : "1.2.2");
+        setBoxHint(dateBox, hasSelection ? "" : "2026-06-09");
+        setBoxHint(titleBox, hasSelection ? "" : commandDeckText("title_placeholder").getString());
+        setBoxHint(accentBox, hasSelection && entry.allowEmptyTypes ? "" : "#D7F26B");
+    }
+
+    private void setBoxHint(EditBox box, String hint) {
+        if (box != null) {
+            box.setHint(Component.literal(hint == null ? "" : hint));
+        }
+    }
+
+    private void handleEntryFieldChanged(String ignored) {
+        if (loadingSelectedFields || selectedEntry() == null) {
+            return;
+        }
+        syncFields();
+        refreshEntryButtons();
     }
 
     private void setBoxValue(EditBox box, String value) {
         if (box != null && !box.getValue().equals(value == null ? "" : value)) {
             box.setValue(value == null ? "" : value);
         }
+        markCommittedValue(box);
     }
 
     private void syncFields() {
@@ -804,8 +898,10 @@ public class CommandDeckEditorScreen extends Screen {
             entry.date = dateBox.getValue();
             entry.title = titleBox.getValue();
             entry.types = getSelectedTypes();
-            if (entry.types.isEmpty()) {
+            if (entry.types.isEmpty() && !entry.allowEmptyTypes) {
                 entry.types.add("patch");
+            } else if (!entry.types.isEmpty()) {
+                entry.allowEmptyTypes = false;
             }
             setTypeCheckboxes(entry.types);
             entry.color = ChangelogDocument.parseColor(accentBox.getValue());
@@ -1115,9 +1211,11 @@ public class CommandDeckEditorScreen extends Screen {
         inlineNodeBox = createBox(x, y, width, commandDeckText("edit_node").getString());
         inlineNodeBox.setMaxLength(500);
         inlineNodeBox.setValue(node.isHeading() ? node.title : node.text);
+        setCommitAction(inlineNodeBox, this::commitInlineNodeEdit);
+        markCommittedValue(inlineNodeBox);
         addRenderableWidget(inlineNodeBox);
         updateInlineNodeEditorPosition();
-        inlineNodeBox.setFocused(true);
+        setFocused(inlineNodeBox);
         inlineNodeBox.setCursorPosition(inlineNodeBox.getValue().length());
         inlineNodeBox.setHighlightPos(inlineNodeBox.getValue().length());
     }
@@ -1170,6 +1268,7 @@ public class CommandDeckEditorScreen extends Screen {
 
     private void closeInlineNodeEditor() {
         if (inlineNodeBox != null) {
+            markCommittedValue(inlineNodeBox);
             removeWidget(inlineNodeBox);
             inlineNodeBox = null;
         }
@@ -1187,7 +1286,28 @@ public class CommandDeckEditorScreen extends Screen {
         entry.version = "1.0.0";
         entry.title = "New changelog entry";
         entry.changeTree.add(EditableChangeNode.bullet("Describe a change"));
-        int insertAt = selectedEntryIndex < 0 ? entries.size() : selectedEntryIndex + 1;
+        insertEntryBeforeSelection(entry, "ctnhchangelog.editor.entry_added");
+    }
+
+    private void addCtnhTemplateEntry() {
+        syncFields();
+        EditableEntry entry = new EditableEntry();
+        entry.version = "";
+        entry.date = "";
+        entry.title = "";
+        entry.types.clear();
+        entry.tags.clear();
+        entry.color = 0xFFFFFFFF;
+        entry.allowEmptyTypes = true;
+        for (String heading : CTNH_TEMPLATE_HEADINGS) {
+            entry.changeTree.add(EditableChangeNode.heading(heading));
+        }
+        entry.syncLegacyChanges();
+        insertEntryBeforeSelection(entry, "ctnhchangelog.editor.ctnh_template_added");
+    }
+
+    private void insertEntryBeforeSelection(EditableEntry entry, String toastKey) {
+        int insertAt = selectedEntryIndex < 0 ? 0 : selectedEntryIndex;
         entries.add(Math.min(insertAt, entries.size()), entry);
         selectedEntryIndex = Math.min(insertAt, entries.size() - 1);
         selectedPath.clear();
@@ -1196,7 +1316,7 @@ public class CommandDeckEditorScreen extends Screen {
         boundEntry = null;
         loadSelectedFields();
         refreshEntryButtons();
-        showToast(Component.translatable("ctnhchangelog.editor.entry_added").getString());
+        showToast(Component.translatable(toastKey).getString());
     }
 
     private void deleteEntry() {
@@ -1267,6 +1387,7 @@ public class CommandDeckEditorScreen extends Screen {
         updateInlineNodeEditorPosition();
 
         super.render(graphics, mouseX, mouseY, partialTick);
+        renderSelectedEntryHighlight(graphics);
         renderEntryDragOverlay(graphics);
         renderTagManagementDecoration(graphics, mouseX, mouseY);
         if (tagDropdownOpen) {
@@ -1288,6 +1409,22 @@ public class CommandDeckEditorScreen extends Screen {
             graphics.drawString(this.font, commandDeckText("no_entries"),
                     left + 16, ENTRY_LIST_TOP + 4, MUTED);
         }
+    }
+
+    private void renderSelectedEntryHighlight(GuiGraphics graphics) {
+        int row = entryButtonEntryIndices.indexOf(selectedEntryIndex);
+        if (row < 0 || row >= entryButtons.size()) {
+            return;
+        }
+        Button button = entryButtons.get(row);
+        int x = button.getX();
+        int y = button.getY();
+        int right = x + button.getWidth();
+        int bottom = y + button.getHeight();
+        graphics.fill(x, y, right, y + 2, ACCENT);
+        graphics.fill(x, bottom - 2, right, bottom, ACCENT);
+        graphics.fill(x, y, x + 2, bottom, ACCENT);
+        graphics.fill(right - 2, y, right, bottom, ACCENT);
     }
 
     private void renderEntryFieldsDecoration(GuiGraphics graphics) {
@@ -1573,7 +1710,7 @@ public class CommandDeckEditorScreen extends Screen {
         String label = entry.version + (entry.title.isEmpty() ? "" : "  " + entry.title);
         int width = Math.min(leftRight - left - 24, this.font.width(label) + 18);
         int x = Mth.clamp(left + 16, left + 8, leftRight - 8 - width);
-        int y = Mth.clamp(entryDragMouseY - 10, ENTRY_LIST_TOP, bottom - 22 - 20);
+        int y = Mth.clamp(entryDragMouseY - 10, ENTRY_LIST_TOP, bottom - 42 - 20);
         graphics.fill(x, y, x + width, y + 20, 0xEE2D3947);
         graphics.fill(x, y, x + 3, y + 20, ACCENT);
         graphics.drawString(this.font, label, x + 8, y + 6, TEXT);
@@ -1603,6 +1740,7 @@ public class CommandDeckEditorScreen extends Screen {
             closeTagColorPicker();
             return true;
         }
+        commitFocusedTextInputOutside(mouseX, mouseY);
         if (tagDropdownOpen && handleTagDropdownClick(mouseX, mouseY, button)) {
             return true;
         }
@@ -1929,6 +2067,28 @@ public class CommandDeckEditorScreen extends Screen {
 
     private boolean isTextInputFocused() {
         return getFocused() instanceof EditBox;
+    }
+
+    private void commitFocusedTextInputOutside(double mouseX, double mouseY) {
+        if (isButtonAt(mouseX, mouseY)) {
+            return;
+        }
+        if (getFocused() instanceof CommitOnBlurEditBox box && !box.isMouseOver(mouseX, mouseY)) {
+            box.commit();
+            if (getFocused() == box) {
+                setFocused(null);
+            }
+        }
+    }
+
+    private boolean isButtonAt(double mouseX, double mouseY) {
+        for (var child : children()) {
+            if (child instanceof Button button && button.visible && button.active
+                    && button.isMouseOver(mouseX, mouseY)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
